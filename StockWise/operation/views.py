@@ -1,187 +1,228 @@
-from rest_framework import viewsets
-from rest_framework.decorators import api_view
-from rest_framework.response import Response
-from django.shortcuts import get_object_or_404
+from functools import reduce
 
+from rest_framework import viewsets, status
+from rest_framework.decorators import action
+from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
+from django.shortcuts import get_object_or_404
 from operation.models import Operation
 from operation.serializers import OperationSerializer
 from operation.services.operation_service import *
 
-
-class OperationViewSet(viewsets.ModelViewSet):
+class OperationViewSet(viewsets.ReadOnlyModelViewSet):  # ✅ Pouze čtení, ale přidáváme vlastní akce
     """
-    ViewSet pro obecnou správu operací (CRUD).
+    ViewSet pro správu operací (CRUD).
     """
     queryset = Operation.objects.all()
     serializer_class = OperationSerializer
+    permission_classes = [IsAuthenticated]
 
+    def get_queryset(self):
+        """
+        Umožňuje filtrovat produkty podle klienta.
+        """
+        queryset = Operation.objects.all()
+        client_id = self.request.GET.get('client')
+        client_ids = self.request.user.client.all().values_list('id', flat=True)
+        queryset = queryset.filter(client_id__in=client_ids)
+        if client_id:
+            queryset = queryset.filter(client_id=client_id)
+        return queryset
 
-### 🔹 Obecná metoda pro vytvoření operace (IN / OUT) ###
+    @action(detail=False, methods=['get'], url_path='search')
+    def search(self, request):
+        query = request.GET.get('q', '')
+        client_id = request.GET.get('clientId', '')
 
-@api_view(['POST'])
-def create_operation_view(request, operation_type):
-    """
-    Endpoint pro vytvoření operace (výdejky nebo příjemky).
-    """
-    if operation_type not in ['IN', 'OUT']:
-        return Response({"error": "Neplatný typ operace. Použijte 'IN' nebo 'OUT'."}, status=400)
+        if not query:
+            return Response({"detail": "Query parameter 'q' is required."}, status=status.HTTP_400_BAD_REQUEST)
 
-    try:
-        operation = create_operation(
-            user=request.user,
-            operation_type=operation_type,
-            description=request.data.get('description')
-        )
-        return Response({
-            "message": f"{'Příjemka' if operation_type == 'IN' else 'Výdejka'} byla vytvořena.",
-            "operation_id": operation.id
-        }, status=201)
-    except Exception as e:
-        return Response({"error": str(e)}, status=400)
-
-
-### 🔹 Obecná metoda pro přidání skupiny do operace ###
-
-@api_view(['POST'])
-def add_group_to_operation_view(request, operation_id):
-    """
-    Endpoint pro přidání skupiny do operace (výdejky nebo příjemky).
-    """
-    operation = get_object_or_404(Operation, id=operation_id)
-
-    try:
-        if operation.type == 'OUT':
-            group = add_group_to_out_operation(
-                operation=operation,
-                batch_id=request.data['batch_id'],
-                box_id=request.data.get('box_id'),
-                quantity=request.data['quantity']
-            )
-        else:  # Příjemka (IN)
-            group = add_group_to_in_operation(
-                operation=operation,
-                product_id=request.data['product_id'],
-                batch_number=request.data['batch_number'],
-                box_id=request.data.get('box_id'),
-                quantity=request.data['quantity'],
-                expiration_date=request.data.get('expiration_date')
+        data_query = query.split(',')
+        if len(data_query) > 1:
+            data_query = [term.strip() for term in data_query if term.strip()]
+            query_filters = reduce(
+                lambda q, term: q |
+                                Q(number=term) |
+                                Q(groups__batch__batch_number=term)|
+                                Q(groups__batch__product__sku=term)|
+                                Q(groups__batch__product__name=term)|
+                                Q(type=term)|
+                                Q(status=term) ,
+                data_query,
+                Q()
             )
 
-        return Response({
-            "message": "Skupina byla přidána do operace.",
-            "group_id": group.id
-        }, status=201)
+            operations = Operation.objects.filter(query_filters).distinct()
 
-    except ValueError as e:
-        return Response({"error": str(e)}, status=400)
-    except Exception as e:
-        return Response({"error": str(e)}, status=400)
+        else:
+            operations = Operation.objects.filter(
+                Q(number=query) |
+                Q(groups__batch__batch_number=query) |
+                Q(groups__batch__product__sku=query) |
+                Q(groups__batch__product__name=query) |
+                Q(type=query) |
+                Q(status=query),
+            ).distinct()
 
+        if client_id:
+            operations = operations.filter(client_id=client_id)
 
-### 🔹 Rezervace šarží pro výdej ###
+        serializer = self.get_serializer(operations, many=True)
+        return Response(serializer.data)
 
-@api_view(['POST'])
-def reserve_batches_view(request, operation_id):
-    """
-    Endpoint pro rezervaci šarží ve výdejce.
-    """
-    operation = get_object_or_404(Operation, id=operation_id, type='OUT')
+    @action(detail=False, methods=['get'], url_path='types')
+    def get_types(self, request):
+        """Vrací seznam typů operací."""
+        return Response({"data": [choice[0] for choice in Operation.OPERATION_TYPE_CHOICES]}, status=200)
 
-    try:
-        result = reserve_batches_for_out_operation_with_notification(operation)
-        return Response(result, status=200)
-    except Exception as e:
-        return Response({"error": str(e)}, status=400)
+    @action(detail=False, methods=['get'], url_path='statuses')
+    def get_statuses(self, request):
+        """Vrací seznam statusů operací."""
+        return Response({"data": [choice[0] for choice in Operation.OPERATION_STATUS_CHOICES]}, status=200)
 
+    @action(detail=False, methods=['get'], url_path='all')
+    def get_all_operations(self, request):
+        """Vrátí seznam všech operací (objednávek)."""
+        operations = Operation.objects.all()
+        serializer = OperationSerializer(operations, many=True)
+        return Response(serializer.data, status=200)
 
-### 🔹 Zpracování operace (výdej / příjem) ###
-
-@api_view(['POST'])
-def process_operation_view(request, operation_id):
-    """
-    Endpoint pro zpracování operace (výdejky nebo příjemky).
-    """
-    operation = get_object_or_404(Operation, id=operation_id)
-
-    try:
-        if operation.type == 'OUT':
-            result = process_out_operation(operation)
-        else:  # Příjemka (IN)
-            result = process_in_operation(operation)
-
-        return Response(result, status=200)
-
-    except Exception as e:
-        return Response({"error": str(e)}, status=400)
-
-
-### 🔹 Přidání skupin na základě strategie (pouze výdej) ###
-
-@api_view(['POST'])
-def add_groups_with_strategy_view(request, operation_id):
-    """
-    Endpoint pro automatické přidání skupin do výdejky na základě strategie.
-    """
-    operation = get_object_or_404(Operation, id=operation_id, type='OUT')
-
-    try:
-        strategy = request.data.get('strategy', 'FIFO')
-        product_id = request.data['product_id']
-        quantity = request.data['quantity']
-
-        result = add_groups_to_operation_with_strategy(
-            operation=operation,
-            product_id=product_id,
-            quantity=quantity,
-            strategy=strategy
-        )
-        return Response(result, status=201)
-
-    except Exception as e:
-        return Response({"error": str(e)}, status=400)
-
-
-### 🔹 Kompletní proces výdeje ###
-
-@api_view(['POST'])
-def process_complete_out_operation_view(request):
-    """
-    Endpoint pro kompletní proces výdeje od vytvoření operace po zpracování.
-    """
-    try:
-        user = request.user
-        product_id = request.data['product_id']
-        quantity = request.data['quantity']
-        strategy = request.data.get('strategy', 'FIFO')
+    @action(detail=False, methods=['post'], url_path='create')
+    def create_operation(self, request):
+        """Vytvoření operace."""
+        operation_type = request.data.get('type')
+        number = request.data.get('number')
         description = request.data.get('description')
+        client_id = request.data.get('client_id')
+        products = request.data.get('products')
 
-        result = process_complete_out_operation(
-            user=user,
-            product_id=product_id,
-            quantity=quantity,
-            strategy=strategy,
-            description=description
-        )
+        if operation_type not in ['IN', 'OUT']:
+            return Response({"error": "Neplatný typ operace. Použijte 'IN' nebo 'OUT'."}, status=400)
+
+        try:
+            operation = create_operation(
+                user=request.user,
+                operation_type=operation_type,
+                description=description,
+                number=number,
+                client_id=client_id,
+                products=products
+            )
+            return Response({
+                "message": f"{'Příjemka' if operation_type == 'IN' else 'Výdejka'} byla vytvořena.",
+                "operation_id": operation.id
+            }, status=201)
+        except Exception as e:
+            return Response({"error": str(e)}, status=400)
+
+    @action(detail=True, methods=['get'], url_path='')
+    def get_operation_detail(self, request, pk=None):
+        """Vrací detail konkrétní operace."""
+        operation = get_object_or_404(Operation, id=pk)
+        serializer = OperationSerializer(operation)
+        return Response(serializer.data, status=200)
+
+    @action(detail=True, methods=['post'], url_path='process')
+    def process_operation(self, request, pk=None):
+        """Zpracování operace (výdejka/příjemka)."""
+        operation = get_object_or_404(Operation, id=pk)
+
+        try:
+            if operation.type == 'OUT':
+                result = process_out_operation(operation)
+            else:  # Příjemka (IN)
+                result = process_in_operation(operation)
+
+            return Response(result, status=200)
+
+        except Exception as e:
+            return Response({"error": str(e)}, status=400)
+
+    @action(detail=True, methods=['patch'], url_path='update')
+    def update_operation(self, request, pk=None):
+        """Aktualizace operace."""
+        operation = get_object_or_404(Operation, id=pk)
+
+        try:
+            updated_operation = update_operation(operation, request.data)
+            return Response({"message": "Operace byla úspěšně aktualizována.", "operation_id": updated_operation.id}, status=200)
+
+        except Exception as e:
+            return Response({"error": str(e)}, status=400)
+
+    @action(detail=True, methods=['delete'], url_path='remove')
+    def remove_operation(self, request, pk=None):
+        """Vymaže danou objednávku"""
+        operation = get_object_or_404(Operation, id=pk)
+        try:
+            remove_operation(operation)
+            return Response({"message": "Operace byla úspěšně smazána."},
+                            status=200)
+
+        except Exception as e:
+            return Response({"error": str(e)}, status=400)
+
+    @action(detail=True, methods=['patch'], url_path='update_status')
+    def update_status(self, request, pk=None):
+        """API pro změnu statusu operace"""
+        operation = get_object_or_404(Operation, id=pk)
+        new_status = request.data.get('status')
+
+        try:
+            operation.status = new_status
+            operation.save(user=request.user)
+            return Response({"message": "Status úspěšně změněn"}, status=200)
+        except Exception as e:
+            return Response({"error": str(e)}, status=400)
+
+    @action(detail=True, methods=['post'], url_path='add_to_box')
+    def add_to_box(self, request, pk=None):
+        """Přidání produktu do krabice"""
+        box_id = request.data.get('box_id')
+        product_id = request.data.get('product_id')
+        quantity = int(request.data.get('quantity'))
+
+        result = add_product_to_box(pk, box_id, product_id, quantity)
+
         return Response(result, status=200)
 
-    except Exception as e:
-        return Response({"error": str(e)}, status=400)
+    @action(detail=True, methods=['get'], url_path='product_summary')
+    def product_summary(self, request, pk=None):
+        """Vrací seznam produktů a jejich celkové množství v operaci"""
+        summary = get_operation_product_summary(pk)
+        return Response(summary, status=200)
 
+    @action(detail=True, methods=['post'], url_path='close_box')
+    def close_box(self, request, pk=None):
+        """Uzavření krabice"""
+        box_id = request.data.get('box_id')
+        box = Box.objects.get(id=box_id)
+        box.closed = True
+        box.save()
 
-### 🔹 Storno operace (výdejka / příjemka) ###
+        return Response({"message": "Krabice uzavřena"}, status=200)
 
-@api_view(['POST'])
-def cancel_operation_view(request, operation_id):
-    """
-    Endpoint pro storno operace.
-    """
-    operation = get_object_or_404(Operation, id=operation_id)
+    @action(detail=True, methods=['post'], url_path='start_packaging')
+    def start_packaging(self, request, pk=None):
+        """Uzavření krabice"""
+        try:
+            operation = get_object_or_404(Operation, id=pk)
+            operation.status = 'BOX'
+            operation.save()
+        except Exception as e:
+            return Response({"error": str(e)}, status=400)
 
-    try:
-        result = cancel_operation(operation)
-        return Response(result, status=200)
+        return Response({"message": "Krabice uzavřena"}, status=200)
 
-    except ValueError as e:
-        return Response({"error": str(e)}, status=400)
-    except Exception as e:
-        return Response({"error": str(e)}, status=400)
+    @action(detail=True, methods=['post'], url_path='complete_packing')
+    def complete_packing(self, request, pk=None):
+        """Dokončení balení a operace"""
+        operation = get_object_or_404(Operation, id=pk)
+
+        if operation.status != "BOX":
+            return Response({"error": "Operace není ve stavu BOX"}, status=400)
+
+        operation.status = "COMPLETED"
+        operation.save()
+
+        return Response({"message": "Operace byla úspěšně dokončena"}, status=200)

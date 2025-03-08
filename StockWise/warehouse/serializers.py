@@ -4,6 +4,24 @@ from warehouse.models import Warehouse
 
 
 class WarehouseSerializer(serializers.ModelSerializer):
+    positions = serializers.SerializerMethodField()
+
     class Meta:
         model = Warehouse
-        fields = '__all__'
+        read_only_fields = ("id",  "positions")
+        fields = [
+            "id",
+            "name",
+            "city",
+            "state",
+            "address",
+            "psc",
+            "positions"
+        ]
+
+    def get_positions(self, obj):
+        positions = obj.position_set.all()
+        return {
+            "count": len(positions),
+            "search": ",".join(positions.values_list("code", flat=True)),
+        }

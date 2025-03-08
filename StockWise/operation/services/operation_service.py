@@ -1,23 +1,127 @@
+from datetime import datetime
+
+from django.core.exceptions import ObjectDoesNotExist, ValidationError
 from django.db import transaction
 from django.db.models import Sum
+from django.shortcuts import get_object_or_404
+
 from batch.models import Batch
 from box.models import Box
+from client.models import Client
 from group.models import Group
+from history.models import History
 from operation.models import Operation
 from stock_change.models import StockChange
 from product.models import Product
+from django.db.models import Q
 
 
-
-def add_group_to_operation(operation, batch_id, box_id, quantity):
+def create_operation(user, operation_type, number, description, client_id, products, delivery_data=None, invoice_data=None):
     """
-    Přidání skupiny (Group) do operace (příjem/výdej).
+    Vytvoření operace (výdejka/příjemka) se zadanými produkty, klientem, krabicemi a dodacími údaji.
     """
-    batch = Batch.objects.get(id=batch_id)
+    try:
+        if operation_type not in ['IN', 'OUT']:
+            raise ValueError("Neplatný typ operace. Musí být 'IN' nebo 'OUT'.")
+
+        try:
+            client = Client.objects.get(id=client_id)
+        except ObjectDoesNotExist:
+            raise ValueError(f"Klient s ID {client_id} neexistuje.")
+
+        # ✅ **Validace – ověření, zda produkty patří klientovi**
+        invalid_products = []
+        for p in products:
+            try:
+                product = Product.objects.get(id=p["productId"])
+                if product.client.id != client.id:
+                    invalid_products.append(p["productId"])
+            except ObjectDoesNotExist:
+                raise ValueError(f"Produkt s ID {p['productId']} neexistuje.")
+
+        if invalid_products:
+            raise ValueError(f"Následující produkty nepatří klientovi: {', '.join(map(str, invalid_products))}")
+
+        with transaction.atomic():
+            operation = Operation.objects.create(
+                type=operation_type,
+                status='CREATED',
+                user=user,
+                description=description,
+                number=number,
+                client=client
+            )
+
+            for product_data in products:
+                try:
+                    product = Product.objects.get(id=product_data["productId"])
+                    quantity = product_data["quantity"]
+                    batch_number = product_data.get("batchNumber")
+                    expiration_date = product_data.get("expirationDate")
+                    box_ean = product_data.get("ean")
+
+                    if operation_type == "IN":
+                        box = create_new_box(box_ean)
+                        add_group_to_in_operation(
+                            operation=operation,
+                            product_id=product.id,
+                            batch_number=batch_number or '',
+                            box_id=box.id if box else None,
+                            quantity=quantity,
+                            expiration_date=expiration_date
+                        )
+                    else:
+                        add_group_to_out_operation(
+                            operation=operation,
+                            product_id=product.id,
+                            batch_number=batch_number or '',
+                            quantity=quantity,
+                            expiration_date=expiration_date
+                        )
+                except ObjectDoesNotExist:
+                    raise ValueError(f"Produkt s ID {product_data['productId']} neexistuje.")
+
+            if operation_type == 'OUT' and delivery_data and invoice_data:
+                set_delivery_data(operation, delivery_data)
+                set_invoice_data(operation, invoice_data)
+
+        return operation
+
+    except ValueError as ve:
+        return {"error": str(ve)}
+
+    except Exception as e:
+        return {"error": str(e)}
+
+### 🔹 **Přidání skupiny do příjemky**
+def add_group_to_in_operation(operation, product_id, batch_number, box_id, quantity, expiration_date=None):
+    """
+    Přidání skupiny (Group) do příjemky – vytvoření nové šarže nebo přidání do existující.
+    """
+    product = Product.objects.get(id=product_id)
+
+    # ✅ Ověření, zda už existuje stejná šarže v rámci této operace
+    existing_group = operation.groups.filter(batch__batch_number=batch_number).exists()
+    if existing_group:
+        raise ValueError(f"Šarže {batch_number} už byla do této příjemky přidána.")
+
+    if expiration_date:
+        expiration_date = datetime.fromisoformat(expiration_date)
+
+    if expiration_date == "":
+        expiration_date = None
+
+    # ✅ Pokud neexistuje, vytvoříme nebo načteme šarži (Batch)
+    batch, created = Batch.objects.get_or_create(
+        product=product,
+        batch_number=batch_number,
+        defaults={"expiration_date": expiration_date}
+    )
+
+    # ✅ Vytvoření nové krabice, pokud není definována
     box = Box.objects.get(id=box_id) if box_id else None
 
-    validate_operation(operation)
-
+    # ✅ Vytvoření nové skupiny (Group) a přidání do operace
     group = Group.objects.create(
         batch=batch,
         box=box,
@@ -25,21 +129,136 @@ def add_group_to_operation(operation, batch_id, box_id, quantity):
     )
     operation.groups.add(group)
 
-    # Aktualizace množství produktu
-    batch.product.refresh_from_db()
+    # ✅ Aktualizace množství produktu
+    product.refresh_from_db()
     return group
 
+def add_group_to_out_operation(operation, product_id, quantity, batch_number=None, expiration_date=None):
+    """
+    Přidání existující skupiny (Group) do výdejky – hledá odpovídající skladovou zásobu a rozdělí ji, pokud je potřeba.
+    """
+    product = Product.objects.get(id=product_id)
+    quantity = int(quantity)
 
-### 🔹 Metody pro výdej ###
+    # Filtrujeme existující groups s tímto produktem, šarží a expirací (pokud jsou specifikovány)
+    existing_groups = Group.objects.filter(
+        batch__product=product
+    )
 
+    if batch_number:
+        existing_groups = existing_groups.filter(batch__batch_number=batch_number)
+    if expiration_date:
+        existing_groups = existing_groups.filter(batch__expiration_date=expiration_date)
+
+    existing_groups.annotate(total_quantity=Sum("quantity")).order_by("batch__expiration_date")
+
+    if not existing_groups:
+        raise ValueError(f"Nenalezena žádná dostupná groupa pro produkt {product_id} se šarží {batch_number}.")
+
+    total_available = sum(group.quantity for group in existing_groups)
+    if total_available < quantity:
+        raise ValueError(
+            f"Nedostatečné zásoby pro produkt {product_id}. Požadováno {quantity}, dostupné {total_available}.")
+
+    selected_groups = []
+    selected_quantity = 0
+
+    for group in existing_groups:
+        if selected_quantity + group.quantity < quantity:
+            selected_groups.append(group)
+            selected_quantity += group.quantity
+        elif selected_quantity + group.quantity == quantity:
+            selected_groups.append(group)
+            selected_quantity += group.quantity
+            break
+        else:
+            # Poslední groupa přesahuje požadované množství – rozdělíme ji
+            remaining_quantity = group.quantity - (quantity - selected_quantity)
+
+            # Vytvoříme novou `group`, která zůstane v původních operacích
+            new_group = Group.objects.create(
+                batch=group.batch,
+                box=group.box,
+                quantity=remaining_quantity
+            )
+
+            # Přiřadíme novou `group` do stejných operací jako původní `group`
+            new_group_operations = group.operations.all()
+            for existing_operation in new_group_operations:
+                existing_operation.groups.add(new_group)
+
+            # Upravit původní `group` pro výdejku
+            group.quantity = quantity - selected_quantity
+            selected_groups.append(group)
+            selected_quantity += group.quantity
+            group.save()
+            break
+
+        # Přidáme vybrané `groups` do výdejky
+    for group in selected_groups:
+        operation.groups.add(group)
+
+    return selected_groups
+
+
+### 🔹 **Funkce pro správu krabic**
+def create_new_box(ean):
+    """
+    Vytvoří novou krabici při příjmu zboží.
+    """
+    return Box.objects.create(ean=ean or '')
+
+
+def select_or_create_out_box(operation, box_id=None, ean=None):
+    """
+    Vybere krabici pro výdejku. Pokud není zadaná, zkusí ji získat z existující skupiny operace.
+    """
+    if box_id:
+        return Box.objects.get(id=box_id)
+
+    if ean:
+        box = Box.objects.filter(ean=ean).first()
+        if box:
+            return box
+
+    existing_group = Group.objects.filter(box__isnull=False, operations__type='IN').first()
+    return existing_group.box if existing_group else None
+
+
+### 🔹 **Přidání dodacích údajů k výdejce**
+def set_delivery_data(operation, delivery_data):
+    """
+    Nastaví dodací údaje pro výdejku.
+    """
+    operation.delivery_name = delivery_data.get("delivery_name")
+    operation.delivery_street = delivery_data.get("delivery_street")
+    operation.delivery_city = delivery_data.get("delivery_city")
+    operation.delivery_psc = delivery_data.get("delivery_psc")
+    operation.delivery_country = delivery_data.get("delivery_country", "CZ")
+    operation.delivery_phone = delivery_data.get("delivery_phone")
+    operation.delivery_email = delivery_data.get("delivery_email")
+    operation.save()
+
+def set_invoice_data(operation, invoice_data):
+    operation.invoice_name = invoice_data.get("invoice_name")
+    operation.invoice_street = invoice_data.get("invoice_street")
+    operation.invoice_city = invoice_data.get("invoice_city")
+    operation.invoice_psc = invoice_data.get("invoice_psc")
+    operation.invoice_country = invoice_data.get("invoice_country", "CZ")
+    operation.invoice_phone = invoice_data.get("invoice_phone")
+    operation.invoice_email = invoice_data.get("invoice_email")
+    operation.invoice_ico = invoice_data.get("invoice_ico")
+    operation.invoice_vat = invoice_data.get("invoice_vat")
+    operation.save()
+
+
+### 🔹 **Rezervace šarží pro výdejku**
 def reserve_batches_for_out_operation(operation):
     """
     Rezervace šarží pro výdej.
     """
     if operation.status != 'CREATED':
         raise ValueError("Operace není ve stavu 'Vytvořeno'.")
-
-    validate_operation(operation)
 
     for group in operation.groups.all():
         batch = group.batch
@@ -53,6 +272,7 @@ def reserve_batches_for_out_operation(operation):
     return {"message": f"Šarže pro operaci ID {operation.id} byly rezervovány."}
 
 
+### 🔹 **Zpracování výdejky**
 def process_out_operation(operation):
     """
     Zpracování výdejky – aktualizace zásob.
@@ -60,12 +280,8 @@ def process_out_operation(operation):
     if operation.status != 'IN_PROGRESS':
         raise ValueError("Operace není ve stavu 'Probíhá'.")
 
-    validate_operation(operation)
-
     for group in operation.groups.all():
         batch = group.batch
-
-        # Log změny zásob
         StockChange.objects.create(
             product=batch.product,
             batch=batch,
@@ -73,10 +289,7 @@ def process_out_operation(operation):
             operation=operation,
             user=operation.user
         )
-
         group.delete()
-
-        # Aktualizace množství produktu
         batch.product.refresh_from_db()
 
     operation.status = 'COMPLETED'
@@ -84,52 +297,17 @@ def process_out_operation(operation):
     return {"message": f"Výdejka ID {operation.id} byla úspěšně zpracována."}
 
 
-### 🔹 Metody pro příjem ###
-
-def add_group_to_in_operation(operation, product_id, batch_number, box_id, quantity, expiration_date=None):
-    """
-    Přidání skupiny (Group) do příjemky – vytvoření nové šarže nebo přidání do existující.
-    """
-    product = Product.objects.get(id=product_id)
-
-    # Ověření, zda už existuje stejná šarže v rámci této operace
-    existing_group = operation.groups.filter(batch__batch_number=batch_number).exists()
-    if existing_group:
-        raise ValueError(f"Šarže {batch_number} už byla do této příjemky přidána.")
-
-    # Pokud neexistuje, vytvoříme nebo načteme Batch
-    batch, created = Batch.objects.get_or_create(
-        product=product,
-        batch_number=batch_number,
-        defaults={"expiration_date": expiration_date}
-    )
-
-    box = Box.objects.get(id=box_id) if box_id else None
-
-    # Vytvoření nové Group a přidání do operace
-    group = Group.objects.create(
-        batch=batch,
-        box=box,
-        quantity=quantity
-    )
-    operation.groups.add(group)
-
-    # Aktualizace množství produktu
-    product.refresh_from_db()
-    return group
-
+### 🔹 **Zpracování příjemky**
 def process_in_operation(operation):
     """
-    Zpracování příjemky s transakční ochranou.
+    Zpracování příjemky.
     """
     if operation.status != 'CREATED':
         raise ValueError("Operace není ve stavu 'Vytvořeno'.")
 
-    with transaction.atomic():  # 🛠 Transakční zámek
+    with transaction.atomic():
         for group in operation.groups.all():
             batch = group.batch
-
-            # Log změny zásob
             StockChange.objects.create(
                 product=batch.product,
                 batch=batch,
@@ -141,203 +319,186 @@ def process_in_operation(operation):
         operation.status = 'COMPLETED'
         operation.save()
 
-        # Aktualizace množství produktu
         for group in operation.groups.all():
             group.batch.product.refresh_from_db()
 
     return {"message": f"Příjemka ID {operation.id} byla úspěšně zpracována."}
 
-def cancel_operation(operation):
-    """
-    Stornování operace (příjemky nebo výdejky).
-    """
+
+### 🔹 **Storno operace**
+def cancel_operation(operation, user):
+    """Storno operace."""
     if operation.status == 'COMPLETED':
         raise ValueError("Dokončenou operaci nelze stornovat.")
 
     with transaction.atomic():
         if operation.type == 'OUT':
             for group in operation.groups.all():
-                group.batch.quantity += group.quantity  # Vrácení zásob
+                group.batch.quantity += group.quantity
                 group.batch.save()
-
         elif operation.type == 'IN':
             for group in operation.groups.all():
-                group.batch.delete()  # Odstranění přidané šarže
+                group.batch.delete()
 
         operation.status = 'CANCELLED'
-        operation.save()
+        operation.save(user=user)
+
+        History.objects.create(
+            type="operation",
+            related_id=operation.id,
+            user=user,
+            description="Operace byla stornována"
+        )
 
     return {"message": f"Operace ID {operation.id} byla stornována."}
 
-
-### 🔹 Obecné metody pro operace ###
-
-def create_operation(user, operation_type, description=None):
+def update_operation(operation, data):
     """
-    Vytvoření nové operace (výdejky nebo příjemky).
+    Aktualizace operace.
     """
-    if operation_type not in ['IN', 'OUT']:
-        raise ValueError("Neplatný typ operace. Musí být 'IN' nebo 'OUT'.")
+    allowed_fields = [
+        "description",
+        "number",
+        "status",
+        'delivery_name',
+        'delivery_street',
+        'delivery_city',
+        'delivery_psc',
+        'delivery_country',
+        'delivery_phone',
+        'delivery_email',
+        'invoice_name',
+        'invoice_street',
+        'invoice_city',
+        'invoice_psc',
+        'invoice_country',
+        'invoice_phone',
+        'invoice_email',
+        'invoice_ico',
+        'invoice_vat'
+    ]
 
-    return Operation.objects.create(
-        type=operation_type,
-        status='CREATED',
-        user=user,
-        description=description
-    )
+    for field in allowed_fields:
+        if field in data:
+            setattr(operation, field, data[field])
 
+    operation.save()
+    return operation
 
-### 🔹 Přidání skupiny do výdejky (OUT) ###
-def add_group_to_out_operation(operation, batch_id, box_id, quantity):
-    """
-    Přidání skupiny (Group) do výdejky.
-    """
-    batch = Batch.objects.get(id=batch_id)
-    box = Box.objects.get(id=box_id) if box_id else None
-
-    validate_operation(operation)
-
-    group = Group.objects.create(
-        batch=batch,
-        box=box,
-        quantity=quantity
-    )
-    operation.groups.add(group)
-
-    # Aktualizace množství produktu
-    batch.product.refresh_from_db()
-    return group
-
-
-### 🔹 Rezervace šarží pro výdej s upozorněním ###
-def reserve_batches_for_out_operation_with_notification(operation):
-    """
-    Rezervace šarží pro výdej a upozornění na nízké zásoby.
-    """
-    if operation.status != 'CREATED':
-        raise ValueError("Operace není ve stavu 'Vytvořeno'.")
-
-    product_ids = operation.groups.values_list('batch__product_id', flat=True).distinct()
-
-    warnings = []
-    for product_id in product_ids:
-        notification = check_low_stock(product_id)
-        if notification:
-            warnings.append(notification)
-
-    result = reserve_batches_for_out_operation(operation)
-
-    if warnings:
-        result["warnings"] = warnings
-
-    return result
-
-
-### 🔹 Automatické přidání skupin podle strategie ###
-def add_groups_to_operation_with_strategy(operation, product_id, quantity, strategy='FIFO'):
-    """
-    Automaticky přidá skupiny (Group) do výdejky na základě strategie (FIFO/FEFO).
-    """
-    batches = get_batches_for_product(product_id, strategy=strategy)
-    remaining_quantity = quantity
-
-    if not batches.exists():
-        raise ValueError(f"Pro produkt ID {product_id} nejsou dostupné žádné šarže.")
-
-    for batch in batches:
-        if remaining_quantity <= 0:
-            break
-
-        batch_quantity = min(remaining_quantity, batch.product.amount)
-
-        group = Group.objects.create(
-            batch=batch,
-            box=None,  # Box je nyní na úrovni Group, nikoliv Batch
-            quantity=batch_quantity
+def remove_operation(operation):
+    if operation.type == 'IN':
+        groups = operation.groups.all()
+        other_operations_exist = any(
+            group.operations.exclude(id=operation.id).exists() for group in groups
         )
-        operation.groups.add(group)
+        if not other_operations_exist:
+             batch_id = operation.groups.all().values_list('batch__id', flat=True)
+             batches = Batch.objects.filter(id__in=batch_id)
+             batches.delete()
+             operation.groups.all().delete()
+             operation.delete()
+             return True
+        else:
+            raise Exception('Operaci nelze smazat')
 
-        remaining_quantity -= batch_quantity
-
-    if remaining_quantity > 0:
-        raise ValueError(f"Nedostatek zásob pro produkt ID {product_id}. Chybí {remaining_quantity} ks.")
-
-    return {"message": f"Do operace ID {operation.id} byly přidány skupiny pro {quantity} ks produktu."}
-
-
-### 🔹 Kompletní proces výdeje ###
-def process_complete_out_operation(user, product_id, quantity, strategy='FIFO', description=None):
-    """
-    Kompletní proces výdeje: vytvoření operace, přidání skupin, rezervace a zpracování.
-    """
-    operation = create_operation(user, operation_type='OUT', description=description)
-
-    add_groups_to_operation_with_strategy(operation, product_id, quantity, strategy)
-
-    reserve_batches_for_out_operation_with_notification(operation)
-
-    result = process_out_operation(operation)
-
-    update_boxes_after_out_operation(operation)
-
-    return result
+    if operation.type == 'OUT':
+        operation.groups = None
+        operation.save()
+        operation.delete()
+        return True
 
 
-### 🔹 Ostatní pomocné metody ###
+def revert_last_status_change(operation, user):
+    """Vrácení operace do předchozího stavu."""
+    last_change = History.objects.filter(type=operation, related_id=operation.id, description__startswith="status").order_by(
+        '-timestamp').first()
+    if not last_change:
+        raise ValueError("Žádná změna stavu nenalezena.")
 
-def validate_operation(operation):
-    """
-    Validace operace před rezervací nebo zpracováním.
-    """
-    errors = []
+    previous_status = last_change.description.split("z '")[1].split("' na")[0]
+    operation.status = previous_status
+    operation.save(user=user)
+
+    History.objects.create(
+        type="operation",
+        related_id=operation.id,
+        user=user,
+        description=f"Stav operace vrácen zpět na {previous_status}"
+    )
+
+    return {"message": f"Operace {operation.number} byla vrácena na stav {previous_status}"}
+
+
+def add_product_to_box(operation_id, box_id, product_id, quantity):
+    """Přidání produktu do krabice s rozdělením množství a označením `rescanned`"""
+
+    with transaction.atomic():
+        operation = get_object_or_404(Operation, id=operation_id)
+        box = get_object_or_404(Box, id=box_id)
+        product = get_object_or_404(Product, id=product_id)
+
+        # Najdeme všechny grupy s tímto produktem, které ještě nejsou rescanned
+        groups = operation.groups.filter(batch__product_id=product.id, rescanned=False).order_by('id')
+
+        total_available = sum(group.quantity for group in groups)
+
+        if quantity > total_available:
+            raise ValidationError(f"Požadované množství ({quantity}) převyšuje dostupné množství ({total_available}).")
+
+        if total_available < quantity:
+            raise ValueError(
+                f"Nedostatečné zásoby pro produkt {product.id}. Požadováno {quantity}, dostupné {total_available}.")
+
+        remaining_quantity = quantity
+        new_groups = []
+
+        for group in groups:
+            if remaining_quantity == 0:
+                break
+
+            if group.quantity <= remaining_quantity:
+                # Přesuneme celou grupu a označíme ji jako `rescanned`
+                group.box = box
+                group.rescanned = True
+                group.save()
+                remaining_quantity -= group.quantity
+                new_groups.append(group)
+
+            else:
+                # Rozdělíme grupu
+                new_group = Group.objects.create(
+                    batch=group.batch,
+                    box=box,
+                    quantity=remaining_quantity,
+                    rescanned=True
+                )
+                group.quantity -= remaining_quantity
+                group.save()
+                new_groups.append(new_group)
+                remaining_quantity = 0
+
+        # Přidáme grupy do operace
+        for group in new_groups:
+            operation.groups.add(group)
+
+        return {"message": f"Produkt {product.name} přidán do krabice {box.ean} v počtu {quantity} ks."}
+
+def get_operation_product_summary(operation_id):
+    """Vrátí seznam produktů a jejich celkové množství v operaci"""
+
+    operation = get_object_or_404(Operation, id=operation_id)
+
+    product_summary = {}
 
     for group in operation.groups.all():
-        batch = group.batch
-        if operation.type == 'OUT' and batch.quantity < group.quantity:
-            errors.append(f"Nedostatek zásob ve šarži {batch.batch_number} pro produkt {batch.product.sku}.")
+        product_id = group.batch.product.id
+        product_name = group.batch.product.name
 
-    if errors:
-        raise ValueError("Validace selhala: " + ", ".join(errors))
+        if product_id not in product_summary:
+            product_summary[product_id] = {"id": product_id, "name": product_name, "total_quantity": 0, "rescanned": 0}
 
+        product_summary[product_id]["total_quantity"] += group.quantity
+        if group.rescanned:
+            product_summary[product_id]["rescanned"] += group.quantity
 
-def check_low_stock(product_id, threshold=10):
-    """
-    Kontrola, zda produkt nemá zásoby pod definovaným prahem.
-    """
-    total_quantity = Batch.objects.filter(product_id=product_id).aggregate(total=Sum('quantity'))['total'] or 0
-
-    if total_quantity < threshold:
-        return {
-            "warning": f"Zásoby produktu ID {product_id} klesly pod stanovenou hranici ({threshold} ks).",
-            "total_quantity": total_quantity
-        }
-    return None
-
-
-def get_batches_for_product(product_id, strategy='FIFO'):
-    """
-    Vrátí šarže pro daný produkt podle zvolené strategie (FIFO/FEFO).
-    """
-    query = Batch.objects.filter(product_id=product_id)
-
-    if strategy == 'FEFO':
-        return query.order_by('expiration_date')
-    return query.order_by('created_at')
-
-
-def update_boxes_after_out_operation(operation):
-    """
-    Aktualizace stavu všech krabic po zpracování výdejky.
-    """
-    for group in operation.groups.all():
-        update_box_status(group)
-
-
-def update_box_status(group):
-    """
-    Aktualizace stavu jedné krabice.
-    """
-    if group.box:
-        if group.batch.quantity == 0:
-            group.box.status = 'empty'
-        group.box.save()
+    return list(product_summary.values())

@@ -35,10 +35,10 @@ class UserViewSet(viewsets.ModelViewSet):
 
         if user.is_superuser:  # Admin vidí všechny
             return User.objects.all()
-        return User.objects.filter(clients_managed__in=user.clients_managed.all()).distinct()
+        return User.objects.filter(id=user.id).distinct()
 
 @api_view(['POST'])
-@permission_classes([])
+@permission_classes([AllowAny])
 def register_user(request):
     """Endpoint pro registraci nového uživatele."""
     email = request.data.get("email")
@@ -62,20 +62,20 @@ def register_user(request):
     return Response({"message": "Registrace byla úspěšná.", "user": UserSerializer(user).data}, status=201)
 
 @api_view(['POST'])
-@permission_classes([])
+@permission_classes([AllowAny])
 def login_user(request):
     """Endpoint pro přihlášení uživatele a vrácení JWT tokenu."""
     email = request.data.get("email")
     password = request.data.get("password")
 
     user = authenticate(request, username=email, password=password)
-    if user is None:
-        return Response({"error": "Neplatné přihlašovací údaje."}, status=401)
+    if user is None or not user.is_active:
+        return Response({"error": "Neplatné přihlašovací údaje nebo uživatel je deaktivován."}, status=401)
 
     refresh = RefreshToken.for_user(user)
     access_token = str(refresh.access_token)
 
-    response = JsonResponse({"message": "Přihlášení úspěšné."})
+    response = JsonResponse({"message": "Přihlášení úspěšné.", "user": UserSerializer(user).data, "access_token": access_token})
     response.set_cookie(
         key="access_token",
         value=access_token,
@@ -97,16 +97,22 @@ def login_user(request):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def logout_user(request):
-    """Endpoint pro odhlášení uživatele – zneplatnění refresh tokenu."""
+    """Odhlásí uživatele a odstraní cookies s tokeny."""
     try:
-        refresh_token = request.data.get("refresh")
-        token = RefreshToken(refresh_token)
-        token.blacklist()
-        logger.info("Refresh token zneplatněn, uživatel odhlášen.")
-        return Response({"message": "Odhlášení proběhlo úspěšně."}, status=200)
+        refresh_token = request.COOKIES.get("refresh_token")
+        if not refresh_token:
+            return Response({"error": "Nebyl poskytnut refresh token."}, status=400)
+
+        response = JsonResponse({"message": "Odhlášení proběhlo úspěšně."})
+        response.delete_cookie("access_token")
+        response.delete_cookie("refresh_token")
+
+        logger.info("Uživatel byl odhlášen a token byl zneplatněn.")
+        return response
     except Exception as e:
         logger.error(f"Chyba při odhlašování: {e}")
         return Response({"error": "Chyba při odhlašování."}, status=400)
+
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
@@ -142,3 +148,26 @@ def refresh_token(request):
     except Exception as e:
         print("Chyba při obnovování tokenu:", e)
         return Response({"detail": "Obnovení tokenu selhalo."}, status=401)
+
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def change_password(request):
+    """
+    Endpoint pro změnu hesla
+    """
+    old_password = request.data.get('old_password')
+    new_password = request.data.get('new_password')
+    confirm_password = request.data.get('confirm_password')
+
+    if new_password != confirm_password:
+        return Response({"error": "Nová hesla se neshodují."}, status=400)
+
+    user = request.user
+    if not user.check_password(old_password):
+        return Response({"error": "Staré heslo není správné."}, status=400)
+
+    user.set_password(new_password)
+    user.save()
+
+    return Response({"message": "Heslo bylo úspěšně změněno."}, status=200)

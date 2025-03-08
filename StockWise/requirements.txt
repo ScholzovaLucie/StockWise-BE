@@ -27,3 +27,7 @@ pytest-django>=4.5,<5.0
 
 # Práce s databázemi
 dj_database_url
+
+djangorestframework-simplejwt[blacklist]==5.2.2
+
+openai
