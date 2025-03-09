@@ -107,6 +107,8 @@ CSRF_TRUSTED_ORIGINS = [
     "http://localhost:3000",
 ]
 
+CORS_ALLOW_ALL_ORIGINS = True
+
 CORS_ALLOW_CREDENTIALS = True
 
 ROOT_URLCONF = 'StockWise.urls'
@@ -201,4 +203,4 @@ STATIC_URL = 'static/'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "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")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
