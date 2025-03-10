@@ -13,6 +13,11 @@ import os
 import sys
 from pathlib import Path
 from datetime import timedelta
+from dotenv import load_dotenv
+
+load_dotenv()
+
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 
 # Quick-start development settings - unsuitable for production
@@ -56,6 +61,7 @@ INSTALLED_APPS = [
     'position',
     'stock_change',
     'dashboard',
+    'chatbot'
 ]
 
 REST_FRAMEWORK = {
@@ -199,6 +205,3 @@ STATIC_URL = 'static/'
 # https://docs.djangoproject.com/en/4.2/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
-
-
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")

@@ -31,3 +31,5 @@ dj_database_url
 djangorestframework-simplejwt[blacklist]==5.2.2
 
 openai
+tiktoken==0.7.0
+dotenv

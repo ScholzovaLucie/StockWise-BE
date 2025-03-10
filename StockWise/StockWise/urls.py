@@ -25,6 +25,8 @@ from drf_yasg import openapi
 from batch.views import BatchViewSet
 from box.views import BoxViewSet
 from chat_log.views import ChatLogViewSet
+from chatbot.fast_prompts.views import FastPromptsAPI
+from chatbot.view import ChatbotView
 from client.views import ClientViewSet
 from client_role.views import ClientRoleViewSet
 from client_user_role.views import ClientUserRoleViewSet
@@ -77,5 +79,6 @@ urlpatterns = [
     path('swagger/', schema_view.with_ui('swagger', cache_timeout=0), name='schema-swagger-ui'),
     path('redoc/', schema_view.with_ui('redoc', cache_timeout=0), name='schema-redoc'),
     path('api/dashboard/', include('dashboard.urls')),
-    path('api/chat/', include('api.chatbot.urls')),
+    path("api/chatbot", ChatbotView.as_view(), name="chatbot"),
+    path(r'api/chatbot/fast_prompts', FastPromptsAPI.as_view()),
 ]
