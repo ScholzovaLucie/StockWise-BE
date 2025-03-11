@@ -23,11 +23,12 @@ class OperationViewSet(viewsets.ReadOnlyModelViewSet):  # ✅ Pouze čtení, ale
         """
         queryset = Operation.objects.all()
         client_id = self.request.GET.get('client')
-        client_ids = self.request.user.client.all().values_list('id', flat=True)
-        queryset = queryset.filter(client_id__in=client_ids)
-        if client_id:
+        client_ids = list(self.request.user.client.values_list('id', flat=True))
+        if client_id and int(client_id) in client_ids:
             queryset = queryset.filter(client_id=client_id)
-        return queryset
+        else:
+            queryset = queryset.filter(client_id__in=client_ids)
+        return queryset.order_by('-updated_at')
 
     @action(detail=False, methods=['get'], url_path='search')
     def search(self, request):

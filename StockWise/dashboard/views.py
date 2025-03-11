@@ -258,7 +258,7 @@ def dashboard_active_operations(request):
     if client_id:
         operations = operations.filter(client_id=client_id)
 
-    active_ops = operations.filter(status__in=['CREATED', 'IN_PROGRESS', 'BOX']).order_by('-created_at')
+    active_ops = operations.filter(status__in=['CREATED', 'BOX']).order_by('-created_at')
     data = [{
         'id': op.id,
         'number': op.number,
@@ -306,7 +306,7 @@ def dashboard_stats(request):
     total_operations = operations_query.count()
     completed_operations = operations_query.filter(status='COMPLETED').count()
     cancelled_operations = operations_query.filter(status='CANCELLED').count()
-    in_progress_operations = operations_query.filter(status__in=['IN_PROGRESS', 'BOX']).count()
+    in_progress_operations = operations_query.filter(status__in=['CREATED', 'BOX']).count()
 
     return Response({
         'totalOperations': total_operations,

@@ -6,8 +6,7 @@ from history.models import History
 # Create your models here.
 class Operation(models.Model):
     VALID_TRANSITIONS = {
-        'CREATED': ['IN_PROGRESS', 'CANCELLED'],
-        'IN_PROGRESS': ['IN_PROGRESS', 'BOX', 'CANCELLED'],
+        'CREATED': ['BOX', 'CANCELLED'],
         'BOX': ['COMPLETED', 'CANCELLED'],
         'COMPLETED': [],
         'CANCELLED': []
@@ -21,7 +20,6 @@ class Operation(models.Model):
 
     OPERATION_STATUS_CHOICES = [
         ('CREATED', 'Vytvořeno'),
-        ('IN_PROGRESS', 'Probíhá'),
         ('COMPLETED', 'Dokončeno'),
         ('CANCELLED', 'Zrušeno'),
         ('BOX', 'Balení')

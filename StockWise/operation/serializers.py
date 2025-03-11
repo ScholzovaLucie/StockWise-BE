@@ -108,10 +108,10 @@ class OperationSerializer(serializers.ModelSerializer):
         ]
 
     def get_groups_name(self, obj):
-        return ",".join([str(group) for group in obj.groups.all()])
+        return ",".join(obj.groups.values_list('name', flat=True))
 
     def get_groups_search(self, obj):
-        return ",".join([str(group.id) for group in obj.groups.all()])
+        return ",".join(map(str, obj.groups.values_list('id', flat=True)))
 
     def get_product_search(self, obj):
         return ",".join(obj.groups.all().values_list('batch__product__sku', flat=True))
