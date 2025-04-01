@@ -1,0 +1,37 @@
+# Django framework
+Django>=4.0,<5.0
+
+# PostgreSQL databáze
+psycopg2-binary>=2.9,<3.0
+
+# Načítání konfigurace z .env souborů
+python-decouple>=3.8
+
+# Django REST Framework
+djangorestframework>=3.14
+djangorestframework-simplejwt
+
+# Swagger dokumentace
+drf-yasg
+
+# Produkční server a statické soubory
+gunicorn>=20.1
+whitenoise>=6.5
+
+# Podpora CORS
+django-cors-headers>=3.13
+
+# Testovací balíčky
+pytest>=7.0
+pytest-django>=4.5,<5.0
+
+# Práce s databázemi
+dj_database_url
+
+djangorestframework-simplejwt[blacklist]==5.2.2
+
+openai
+tiktoken==0.7.0
+dotenv
+pandas
+openpyxl

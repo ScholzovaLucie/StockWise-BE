@@ -1,0 +1,13 @@
+services:
+  backend:
+    container_name: stockwise-backend
+    restart: always
+    build:
+      context: ./
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - DJANGO_SETTINGS_MODULE=StockWise.settings
+      - DATABASE_URL=postgres://<SUPABASE_USER>:<SUPABASE_PASSWORD>@<SUPABASE_HOST>:5432/<SUPABASE_DB>
+    command: [ "python", "manage.py", "runserver", "0.0.0.0:8000" ]
