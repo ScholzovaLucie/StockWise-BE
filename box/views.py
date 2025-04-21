@@ -3,8 +3,9 @@ from functools import reduce
 from django.shortcuts import get_object_or_404
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
+from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
-from django.db.models import Q
+from django.db.models import Q, Prefetch
 
 from box.models import Box
 from box.serializers import BoxSerializer
@@ -15,6 +16,11 @@ from group.models import Group
 class BoxViewSet(viewsets.ModelViewSet):
     queryset = Box.objects.all()
     serializer_class = BoxSerializer
+
+    def get_queryset(self):
+        return Box.objects.prefetch_related(
+            Prefetch('groups', queryset=Group.objects.only('id'))
+        )
 
     @action(detail=False, methods=['get'], url_path='search')
     def search(self, request):
@@ -30,11 +36,10 @@ class BoxViewSet(viewsets.ModelViewSet):
                 lambda q, term: q |
                                 Q(ean__icontains=term) |
                                 Q(position__code__icontains=term) |
-                data_query,
-                Q()
+                data_query
             )
 
-            boxes = Box.objects.filter(query_filters).distinct()
+            boxes = Box.objects.filter(query_filters).distinct("id")
 
         else:
             boxes = Box.objects.filter(
@@ -42,7 +47,11 @@ class BoxViewSet(viewsets.ModelViewSet):
                 Q(position__code__icontains=query)
             )
 
-        serializer = self.get_serializer(boxes, many=True)
+        paginator = PageNumberPagination()
+        paginator.page_size = request.GET.get('page_size') or 10
+        paginated_data = paginator.paginate_queryset(boxes, request)
+
+        serializer = self.get_serializer(paginated_data, many=True)
         return Response(serializer.data)
 
     @action(detail=True, methods=['get'], url_path='products')

@@ -1,3 +1,5 @@
+from itertools import chain
+
 from rest_framework import serializers
 
 from batch.models import Batch
@@ -15,31 +17,28 @@ class ProductSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Product
-        read_only_fields = ("amount", "batches", "groups")
-        fields = ["id", "client_id", "name", "sku", "description", "amount", "batches", "groups", 'created_at']
-
-    def get_groups(self, obj):
-        groups = Group.objects.filter(batch__product=obj)
-        return {
-            'count': len(groups),
-            'search': ",".join([str(group.batch.product.sku) for group in groups]),
-            'title': ",".join([str(group) for group in groups]),
-        }
+        read_only_fields = ("amount_cached", "batches", "groups")
+        fields = ["id", "client_id", "name", "sku", "description", "amount_cached", "batches", "groups", 'created_at']
 
     def get_batches(self, obj):
-        batches = obj.batches.filter(product=obj)
+        batches = list(obj.batches.all())
         return {
             'count': len(batches),
-            'search': ",".join(batches.values_list("batch_number", flat=True)),
+            'search': ",".join(batch.batch_number for batch in batches),
         }
 
+    def get_groups(self, obj):
+        batches = obj.batches.all()
+        all_groups = list(chain.from_iterable(batch.groups.all() for batch in batches))
+        return {
+            'count': len(all_groups),
+            'search': ",".join(str(g.id) for g in all_groups),
+            'title': ",".join(str(g) for g in all_groups),
+        }
 
     def create(self, validated_data):
-        print(validated_data)  # Debugging
-
         if isinstance(validated_data, list):
             return Product.objects.bulk_create([Product(**item) for item in validated_data])
-
         return super().create(validated_data)
 
 class ProductBulkSerializer(serializers.ModelSerializer):

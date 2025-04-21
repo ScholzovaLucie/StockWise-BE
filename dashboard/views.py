@@ -59,57 +59,43 @@ def update_dashboard_config(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def dashboard_overview(request):
-    """
-    Vrací rozšířený přehled skladu:
-      - celkový počet kusů (totalItems)
-      - celková hodnota zásob (totalValue)
-      - celkový počet produktů (totalProducts)
-      - počet produktů s nulovým stavem (outOfStockProducts)
-      - počet produktů s nízkým stavem zásob (lowStockCount)
-      - počet produktů s blížící se expirací (expiringSoonCount)
-      - nejzásobenější produkt (mostStockedProduct)
-    """
     client_id = request.query_params.get("clientId")
 
-    products = Product.objects.all()
-    products = products.filter(client_id=client_id)
+    products = Product.objects.filter(client_id=client_id) if client_id else Product.objects.all()
+    products = products.only("id", "sku", "name", "amount_cached")
 
-    total_items = sum(p.amount for p in products)
-    total_value = total_items  # Pro ilustraci (můžete použít cenu apod.)
+    total_items = products.aggregate(total=Sum("amount_cached"))["total"] or 0
+    total_value = total_items  # Zatím bez ceny
     total_products = products.count()
 
-    out_of_stock_count = len([p for p in products if p.amount == 0])
-    out_of_stock_value = ",".join([p.sku for p in products if p.amount == 0])
+    # Filtrování pomocí amount_cached
+    out_of_stock = products.filter(amount_cached=0)
+    low_stock = products.filter(amount_cached__gt=0, amount_cached__lt=10)
 
-    low_stock_threshold = 10
-    low_stock_count = len([p for p in products if 0 < p.amount < low_stock_threshold])
-    low_stock_value = ",".join([p.sku for p in products if 0 < p.amount < low_stock_threshold])
+    out_of_stock_count = out_of_stock.count()
+    out_of_stock_value = ",".join(out_of_stock.values_list("sku", flat=True))
 
-    # Počet produktů s blížící se expirací – zde definujeme threshold 30 dnů
+    low_stock_count = low_stock.count()
+    low_stock_value = ",".join(low_stock.values_list("sku", flat=True))
+
+    # Šarže s blížící se expirací
     expiring_soon_threshold = 30
     now = timezone.now().date()
     expiring_batches = Batch.objects.filter(
         expiration_date__isnull=False,
-        expiration_date__lte=datetime.now() + timedelta(days=expiring_soon_threshold)
+        expiration_date__lte=now + timedelta(days=expiring_soon_threshold),
+        product__client_id=client_id
     )
 
-    if client_id:
-        expiring_batches = expiring_batches.filter(product__client_id=client_id)
-    else:
-        client_ids = request.user.client.all().values_list('id', flat=True)
-        expiring_batches = expiring_batches.filter(product__client_id__in=client_ids)
-
-    # Počet šarží s blížící se expirací
     expiring_soon_count = expiring_batches.count()
-
-    # Ulož seznam ID šarží nebo jiný unikátní identifikátor (např. batch number)
     expiring_soon_value = ",".join(expiring_batches.values_list("batch_number", flat=True))
 
-    most_stocked_product = max(products, key=lambda p: p.amount) if products.exists() else None
+    # Nejzásobenější produkt
+    most_stocked_product = products.order_by("-amount_cached").first()
     most_stock_data = {
         "id": most_stocked_product.id,
         "name": most_stocked_product.name,
-        "amount": most_stocked_product.amount,
+        "amount": most_stocked_product.amount_cached,
     } if most_stocked_product else None
 
     return Response({
@@ -139,25 +125,16 @@ def dashboard_low_stock(request):
     Vrací seznam produktů s nízkými zásobami (pod stanoveným prahem).
     """
     client_id = request.query_params.get("clientId")
-    threshold = 10  # Prahová hodnota pro nízké zásoby
-    products = Product.objects.all()
-    client_id = request.GET.get('client')
+    threshold = 10
 
     if client_id:
-        products = products.filter(client_id=client_id)
+        products = Product.objects.filter(client_id=client_id, amount_cached__lt=threshold)
     else:
         client_ids = request.user.client.all().values_list('id', flat=True)
-        products = products.filter(client_id__in=client_ids)
+        products = Product.objects.filter(client_id__in=client_ids, amount_cached__lt=threshold)
 
-    low_stock = [
-        {
-            "id": p.id,
-            "name": p.name,
-            "amount": p.amount,
-        }
-        for p in products if p.amount < threshold
-    ]
-    return Response(low_stock)
+    low_stock = products.values("id", "name", "amount_cached")
+    return Response(list(low_stock))
 
 
 @api_view(["GET"])
@@ -399,7 +376,7 @@ def dashboard_efficiency(request):
 @permission_classes([IsAuthenticated])
 def my_widgets(request):
     dashboard_type = 'main'
-    if request.query_params.get("stats"):
+    if request.query_params.get("stats") and request.query_params.get("stats") != 'false':
         dashboard_type = 'stats'
 
     config, created = UserDashboardConfig.objects.get_or_create(user=request.user, type=dashboard_type)
@@ -411,7 +388,7 @@ def my_widgets(request):
 @permission_classes([IsAuthenticated])
 def save_widgets(request):
     dashboard_type = 'main'
-    if request.data.get("stats"):
+    if request.data.get("stats") and request.data.get("stats") != 'false':
         dashboard_type = 'stats'
 
     config, _ = UserDashboardConfig.objects.get_or_create(user=request.user, type=dashboard_type)

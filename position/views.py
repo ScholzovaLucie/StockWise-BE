@@ -2,6 +2,7 @@ from functools import reduce
 
 from rest_framework import viewsets
 from rest_framework.decorators import action
+from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 from django.db.models import Q
 
@@ -32,7 +33,7 @@ class PositionViewSet(viewsets.ModelViewSet):
                 Q()
             )
 
-            positions = Position.objects.filter(query_filters).distinct()
+            positions = Position.objects.filter(query_filters).only("id")
 
         else:
             positions = Position.objects.filter(
@@ -41,5 +42,9 @@ class PositionViewSet(viewsets.ModelViewSet):
                 Q(warehouse__name__icontains=query)
             )
 
-        serializer = self.get_serializer(positions, many=True)
+        paginator = PageNumberPagination()
+        paginator.page_size = request.GET.get('page_size') or 10
+        paginated_data = paginator.paginate_queryset(positions, request)
+
+        serializer = self.get_serializer(paginated_data, many=True)
         return Response(serializer.data)

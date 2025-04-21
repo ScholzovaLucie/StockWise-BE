@@ -25,7 +25,9 @@ class GroupSerializer(serializers.ModelSerializer):
         fields = ['batch_id', 'box_id', 'quantity', 'id', 'name', 'box_ean', 'operations_in', 'operations_out', "product_name", 'created_at',]
 
     def get_product_name(self, obj):
-        return obj.batch.product.sku
+        if hasattr(obj, 'batch') and hasattr(obj.batch, 'product'):
+            return obj.batch.product.sku
+        return None
 
     def get_name(self, obj):
         return f"{obj.batch.product.name} ({obj.batch.batch_number})"
@@ -71,3 +73,37 @@ class GroupBulkSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         return Group.objects.bulk_create([Group(**item) for item in validated_data])
+
+
+class GroupListSerializer(serializers.ModelSerializer):
+    batch_id = serializers.PrimaryKeyRelatedField(read_only=True)
+    box_id = serializers.PrimaryKeyRelatedField(read_only=True)
+    name = serializers.SerializerMethodField()
+    product_name = serializers.SerializerMethodField()
+    operations_in = serializers.SerializerMethodField()
+    operations_out = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Group
+        read_only_fields = ("operations_in", 'operations_out')
+        fields = ['id', 'quantity', 'name', 'product_name', 'box_id', 'batch_id', 'operations_in', 'operations_out']
+
+    def get_name(self, obj):
+        return f"{obj.batch.product.name} ({obj.batch.batch_number})"
+
+    def get_product_name(self, obj):
+        return obj.batch.product.sku
+
+    def get_operations_in(self, obj):
+        operations = obj.operations.filter(type='IN')
+        return {
+            "count": len(operations),
+            "search": ",".join(operations.values_list("number", flat=True)),
+        }
+
+    def get_operations_out(self, obj):
+        operations = obj.operations.filter(type='OUT')
+        return {
+            "count": len(operations),
+            "search": ",".join(operations.values_list("number", flat=True)),
+        }

@@ -27,17 +27,15 @@ class BoxSerializer(serializers.ModelSerializer):
         ]
 
     def get_position(self, obj):
-        if obj.position:
-            return obj.position.code
-        return None
-
+        return getattr(obj.position, "code", None)
 
     def get_groups(self, obj):
-        groups = obj.groups.all()
+        groups = list(obj.groups.all())  # načti jen jednou
+        ids = [str(group.id) for group in groups]
         return {
             "count": len(groups),
-            "search": ",".join([str(group.id) for group in obj.groups.all()]),
-            "title": ",".join([str(group) for group in obj.groups.all()]),
+            "search": ",".join(ids),
+            "title": ",".join(ids),
         }
 
     def create(self, validated_data):

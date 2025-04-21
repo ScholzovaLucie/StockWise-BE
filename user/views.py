@@ -40,7 +40,7 @@ class UserViewSet(viewsets.ModelViewSet):
 
         if user.is_superuser:  # Admin vidí všechny
             return User.objects.all()
-        return User.objects.filter(id=user.id).distinct()
+        return User.objects.filter(id=user.id).only('id')
 
 @api_view(['POST'])
 @permission_classes([AllowAny])

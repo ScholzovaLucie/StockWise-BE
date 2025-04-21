@@ -15,7 +15,6 @@ class Operation(models.Model):
     OPERATION_TYPE_CHOICES = [
         ('IN', 'Příjem'),
         ('OUT', 'Výdej'),
-        ('MOVE', 'Přesun')
     ]
 
     OPERATION_STATUS_CHOICES = [

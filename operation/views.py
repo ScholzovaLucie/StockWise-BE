@@ -1,15 +1,17 @@
 from functools import reduce
 
+from django.db.models import Prefetch
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
+from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from django.shortcuts import get_object_or_404
 from operation.models import Operation
-from operation.serializers import OperationSerializer
+from operation.serializers import OperationSerializer, OperationListSerializer
 from operation.services.operation_service import *
 
-class OperationViewSet(viewsets.ReadOnlyModelViewSet):  # ✅ Pouze čtení, ale přidáváme vlastní akce
+class OperationViewSet(viewsets.ReadOnlyModelViewSet):
     """
     ViewSet pro správu operací (CRUD).
     """
@@ -17,18 +19,29 @@ class OperationViewSet(viewsets.ReadOnlyModelViewSet):  # ✅ Pouze čtení, ale
     serializer_class = OperationSerializer
     permission_classes = [IsAuthenticated]
 
+    def get_serializer_class(self):
+        if self.action == 'list':
+            return OperationListSerializer
+        return OperationSerializer
+
     def get_queryset(self):
-        """
-        Umožňuje filtrovat produkty podle klienta.
-        """
-        queryset = Operation.objects.all()
         client_id = self.request.GET.get('client')
         client_ids = list(self.request.user.client.values_list('id', flat=True))
+
+        groups_qs = Group.objects.select_related(
+            'batch__product', 'box'
+        )
+
+        queryset = Operation.objects.prefetch_related(
+            Prefetch('groups', queryset=groups_qs)
+        ).select_related('client').order_by('-updated_at')
+
         if client_id and int(client_id) in client_ids:
             queryset = queryset.filter(client_id=client_id)
         else:
             queryset = queryset.filter(client_id__in=client_ids)
-        return queryset.order_by('-updated_at')
+
+        return queryset
 
     @action(detail=False, methods=['get'], url_path='search')
     def search(self, request):
@@ -53,7 +66,7 @@ class OperationViewSet(viewsets.ReadOnlyModelViewSet):  # ✅ Pouze čtení, ale
                 Q()
             )
 
-            operations = Operation.objects.filter(query_filters).distinct()
+            operations = Operation.objects.filter(query_filters).only("id")
 
         else:
             operations = Operation.objects.filter(
@@ -63,12 +76,16 @@ class OperationViewSet(viewsets.ReadOnlyModelViewSet):  # ✅ Pouze čtení, ale
                 Q(groups__batch__product__name=query) |
                 Q(type=query) |
                 Q(status=query),
-            ).distinct()
+            ).only("id")
 
         if client_id:
             operations = operations.filter(client_id=client_id)
 
-        serializer = self.get_serializer(operations, many=True)
+        paginator = PageNumberPagination()
+        paginator.page_size = request.GET.get('page_size') or 10
+        paginated_data = paginator.paginate_queryset(operations, request)
+
+        serializer = self.get_serializer(paginated_data, many=True)
         return Response(serializer.data)
 
     @action(detail=False, methods=['get'], url_path='types')

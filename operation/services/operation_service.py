@@ -11,7 +11,6 @@ from client.models import Client
 from group.models import Group
 from history.models import History
 from operation.models import Operation
-from stock_change.models import StockChange
 from product.models import Product
 from django.db.models import Q
 

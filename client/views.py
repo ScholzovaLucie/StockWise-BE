@@ -2,6 +2,7 @@ from functools import reduce
 
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
+from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 from django.db.models import Q
 
@@ -16,7 +17,7 @@ class ClientViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         queryset = Client.objects.all()
-        client_id = self.request.GET.get('client')
+        client_id = self.request.GET.get('client_id')
         user_clients = self.request.user.client.all().values_list('id', flat=True)
         if not self.request.GET.get('all') or self.request.GET.get('all') != 'true':
             queryset = queryset.filter(id__in=user_clients)
@@ -40,7 +41,7 @@ class ClientViewSet(viewsets.ModelViewSet):
                 Q()
             )
 
-            clients = Client.objects.filter(query_filters).distinct()
+            clients = Client.objects.filter(query_filters).only('id')
 
         else:
             clients = Client.objects.filter(
@@ -50,6 +51,9 @@ class ClientViewSet(viewsets.ModelViewSet):
         if client_id:
             clients = clients.filter(id=client_id)
 
+        paginator = PageNumberPagination()
+        paginator.page_size = request.GET.get('page_size') or 10
+        paginated_data = paginator.paginate_queryset(clients, request)
 
-        serializer = self.get_serializer(clients, many=True)
+        serializer = self.get_serializer(paginated_data, many=True)
         return Response(serializer.data)

@@ -15,6 +15,7 @@ class Product(models.Model):
     description = models.TextField(blank=True)
     created_at = models.DateTimeField('Created At', auto_now_add=True)
     client = models.ForeignKey('client.Client', verbose_name='Client', null=False, on_delete=models.CASCADE)
+    amount_cached = models.IntegerField(default=0)
 
     _amount_override = models.IntegerField(null=True, blank=True)
 
@@ -31,7 +32,7 @@ class Product(models.Model):
             return self._amount_override
 
         total_amount = 0
-        operations = Operation.objects.filter(groups__batch__product_id=self.id).distinct()
+        operations = Operation.objects.filter(groups__batch__product_id=self.id).only("groups__batch__product_id")
         if len(operations) > 0:
             for operation in operations:
                 if operation.type == 'IN':
