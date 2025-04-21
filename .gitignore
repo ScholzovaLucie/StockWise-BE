@@ -24,11 +24,6 @@ staticfiles/
 # OS
 .DS_Store
 
-# Migrations (volitelné)
-**/migrations/*.py
-**/migrations/*.pyc
-!**/migrations/__init__.py
-
 # Docker
 *.log
 *.pid
