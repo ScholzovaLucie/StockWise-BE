@@ -10,4 +10,5 @@ services:
     environment:
       - DJANGO_SETTINGS_MODULE=StockWise.settings
       - DATABASE_URL=postgres://<SUPABASE_USER>:<SUPABASE_PASSWORD>@<SUPABASE_HOST>:5432/<SUPABASE_DB>
+    # docker-compose.yml (pro vývoj)
     command: [ "python", "manage.py", "runserver", "0.0.0.0:8000" ]
