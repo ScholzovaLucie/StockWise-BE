@@ -111,10 +111,12 @@ MIDDLEWARE = [
 
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
+    "https://stock-wise-fe.vercel.app"
 ]
 
 CSRF_TRUSTED_ORIGINS = [
     "http://localhost:3000",
+    "https://stock-wise-fe.vercel.app"
 ]
 
 CORS_ALLOW_CREDENTIALS = True
