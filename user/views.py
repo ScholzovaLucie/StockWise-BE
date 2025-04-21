@@ -60,7 +60,7 @@ def register_user(request):
 
     user = User.objects.create(
         email=email,
-        password=make_password(password)  # Hashování hesla
+        password=make_password(password)
     )
 
     logger.info(f"Nový uživatel {email} zaregistrován.")
@@ -86,14 +86,14 @@ def login_user(request):
         key="access_token",
         value=access_token,
         httponly=True,
-        secure=True,  # Používat jen na HTTPS
+        secure=True,
         samesite="Strict"
     )
     response.set_cookie(
         key="refresh_token",
         value=str(refresh),
         httponly=True,
-        secure=True,  # Používat jen na HTTPS
+        secure=True, 
         samesite="Strict"
     )
 

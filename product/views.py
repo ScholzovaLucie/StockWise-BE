@@ -11,10 +11,13 @@ from batch.models import Batch
 from group.models import Group
 from product.models import Product
 from product.serializers import ProductSerializer
+from utils.pagination import CustomPageNumberPagination
+
 
 class ProductViewSet(viewsets.ModelViewSet):
     queryset = Product.objects.all()
     serializer_class = ProductSerializer
+    pagination_class = CustomPageNumberPagination
 
     def get_queryset(self):
         client_id = self.request.GET.get('client_id')

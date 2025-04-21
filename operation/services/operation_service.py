@@ -9,10 +9,8 @@ from batch.models import Batch
 from box.models import Box
 from client.models import Client
 from group.models import Group
-from history.models import History
 from operation.models import Operation
 from product.models import Product
-from django.db.models import Q
 
 
 def create_operation(user, operation_type, number, description, client_id, products, delivery_data=None, invoice_data=None):
@@ -197,22 +195,6 @@ def create_new_box(ean):
     return Box.objects.create(ean=ean or '')
 
 
-def select_or_create_out_box(operation, box_id=None, ean=None):
-    """
-    Vybere krabici pro výdejku. Pokud není zadaná, zkusí ji získat z existující skupiny operace.
-    """
-    if box_id:
-        return Box.objects.get(id=box_id)
-
-    if ean:
-        box = Box.objects.filter(ean=ean).first()
-        if box:
-            return box
-
-    existing_group = Group.objects.filter(box__isnull=False, operations__type='IN').first()
-    return existing_group.box if existing_group else None
-
-
 ### 🔹 **Přidání dodacích údajů k výdejce**
 def set_delivery_data(operation, delivery_data):
     """
@@ -238,107 +220,6 @@ def set_invoice_data(operation, invoice_data):
     operation.invoice_ico = invoice_data.get("invoice_ico")
     operation.invoice_vat = invoice_data.get("invoice_vat")
     operation.save()
-
-
-### 🔹 **Rezervace šarží pro výdejku**
-def reserve_batches_for_out_operation(operation):
-    """
-    Rezervace šarží pro výdej.
-    """
-    if operation.status != 'CREATED':
-        raise ValueError("Operace není ve stavu 'Vytvořeno'.")
-
-    for group in operation.groups.all():
-        batch = group.batch
-        if batch.quantity < group.quantity:
-            raise ValueError(f"Nedostatek zásob ve šarži {batch.batch_number}.")
-        batch.quantity -= group.quantity
-        batch.save()
-
-    operation.status = 'IN_PROGRESS'
-    operation.save()
-    return {"message": f"Šarže pro operaci ID {operation.id} byly rezervovány."}
-
-
-### 🔹 **Zpracování výdejky**
-def process_out_operation(operation):
-    """
-    Zpracování výdejky – aktualizace zásob.
-    """
-    if operation.status != 'IN_PROGRESS':
-        raise ValueError("Operace není ve stavu 'Probíhá'.")
-
-    for group in operation.groups.all():
-        batch = group.batch
-        StockChange.objects.create(
-            product=batch.product,
-            batch=batch,
-            change=-group.quantity,
-            operation=operation,
-            user=operation.user
-        )
-        group.delete()
-        batch.product.refresh_from_db()
-
-    operation.status = 'COMPLETED'
-    operation.save()
-    return {"message": f"Výdejka ID {operation.id} byla úspěšně zpracována."}
-
-
-### 🔹 **Zpracování příjemky**
-def process_in_operation(operation):
-    """
-    Zpracování příjemky.
-    """
-    if operation.status != 'CREATED':
-        raise ValueError("Operace není ve stavu 'Vytvořeno'.")
-
-    with transaction.atomic():
-        for group in operation.groups.all():
-            batch = group.batch
-            StockChange.objects.create(
-                product=batch.product,
-                batch=batch,
-                change=group.quantity,
-                operation=operation,
-                user=operation.user
-            )
-
-        operation.status = 'COMPLETED'
-        operation.save()
-
-        for group in operation.groups.all():
-            group.batch.product.refresh_from_db()
-
-    return {"message": f"Příjemka ID {operation.id} byla úspěšně zpracována."}
-
-
-### 🔹 **Storno operace**
-def cancel_operation(operation, user):
-    """Storno operace."""
-    if operation.status == 'COMPLETED':
-        raise ValueError("Dokončenou operaci nelze stornovat.")
-
-    with transaction.atomic():
-        if operation.type == 'OUT':
-            for group in operation.groups.all():
-                group.batch.quantity += group.quantity
-                group.batch.save()
-        elif operation.type == 'IN':
-            for group in operation.groups.all():
-                group.batch.delete()
-
-        operation.status = 'CANCELLED'
-        operation.save(user=user)
-
-        History.objects.create(
-            type="operation",
-            related_id=operation.id,
-            user=user,
-            description="Operace byla stornována"
-        )
-
-    return {"message": f"Operace ID {operation.id} byla stornována."}
 
 def update_operation(operation, data):
     """
@@ -401,28 +282,6 @@ def remove_operation(operation):
         operation.save()
         operation.delete()
         return True
-
-
-def revert_last_status_change(operation, user):
-    """Vrácení operace do předchozího stavu."""
-    last_change = History.objects.filter(type=operation, related_id=operation.id, description__startswith="status").order_by(
-        '-timestamp').first()
-    if not last_change:
-        raise ValueError("Žádná změna stavu nenalezena.")
-
-    previous_status = last_change.description.split("z '")[1].split("' na")[0]
-    operation.status = previous_status
-    operation.save(user=user)
-
-    History.objects.create(
-        type="operation",
-        related_id=operation.id,
-        user=user,
-        description=f"Stav operace vrácen zpět na {previous_status}"
-    )
-
-    return {"message": f"Operace {operation.number} byla vrácena na stav {previous_status}"}
-
 
 def add_product_to_box(operation_id, box_id, product_id, quantity):
     """Přidání produktu do krabice s rozdělením množství a označením `rescanned`"""

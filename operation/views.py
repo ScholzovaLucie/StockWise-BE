@@ -6,10 +6,9 @@ from rest_framework.decorators import action
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
-from django.shortcuts import get_object_or_404
-from operation.models import Operation
 from operation.serializers import OperationSerializer, OperationListSerializer
 from operation.services.operation_service import *
+from django.db.models import Q
 
 class OperationViewSet(viewsets.ReadOnlyModelViewSet):
     """
@@ -114,6 +113,9 @@ class OperationViewSet(viewsets.ReadOnlyModelViewSet):
         client_id = request.data.get('client_id')
         products = request.data.get('products')
 
+        if not number or operation_type or client_id or products:
+            return Response({"error": "Chybějící povinný parametr."}, status=400)
+
         if operation_type not in ['IN', 'OUT']:
             return Response({"error": "Neplatný typ operace. Použijte 'IN' nebo 'OUT'."}, status=400)
 
@@ -159,22 +161,6 @@ class OperationViewSet(viewsets.ReadOnlyModelViewSet):
         operation = get_object_or_404(Operation, id=pk)
         serializer = OperationSerializer(operation)
         return Response(serializer.data, status=200)
-
-    @action(detail=True, methods=['post'], url_path='process')
-    def process_operation(self, request, pk=None):
-        """Zpracování operace (výdejka/příjemka)."""
-        operation = get_object_or_404(Operation, id=pk)
-
-        try:
-            if operation.type == 'OUT':
-                result = process_out_operation(operation)
-            else:  # Příjemka (IN)
-                result = process_in_operation(operation)
-
-            return Response(result, status=200)
-
-        except Exception as e:
-            return Response({"error": str(e)}, status=400)
 
     @action(detail=True, methods=['patch'], url_path='update')
     def update_operation(self, request, pk=None):

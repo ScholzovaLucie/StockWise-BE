@@ -9,7 +9,7 @@ class CustomPageNumberPagination(PageNumberPagination):
 
     def paginate_queryset(self, queryset, request, view=None):
         if request.query_params.get(self.no_page_param) == '1':
-            return None  # stránkování se nepoužije
+            return None
         return super().paginate_queryset(queryset, request, view)
 
     def get_paginated_response(self, data):
