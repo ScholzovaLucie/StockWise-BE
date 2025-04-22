@@ -27,3 +27,6 @@ staticfiles/
 # Docker
 *.log
 *.pid
+
+.venv
+*.venev
