@@ -24,7 +24,6 @@ from drf_yasg import openapi
 
 from batch.views import BatchViewSet
 from box.views import BoxViewSet
-from chat_log.views import ChatLogViewSet
 from chatbot.views import ChatbotView, StatisticsView
 from client.views import ClientViewSet
 from group.views import GroupViewSet
@@ -61,7 +60,6 @@ router.register(r'groups', GroupViewSet)
 router.register(r'positions', PositionViewSet)
 router.register(r'histories', HistoryViewSet)
 router.register(r'boxes', BoxViewSet)
-router.register(r'chat_logs', ChatLogViewSet)
 router.register(r'products', ProductViewSet)
 
 urlpatterns = [

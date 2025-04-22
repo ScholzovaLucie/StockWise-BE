@@ -10,30 +10,49 @@ from product.models import Product
 from product.serializers import ProductSerializer
 from user.models import User
 
+class GroupPrefetchMixin:
+    def _get_prefetched_groups(self, obj):
+        return getattr(obj, 'prefetched_groups', obj.groups.all())
+
+class GroupStatsMixin(GroupPrefetchMixin):
+    def get_groups_name(self, obj):
+        return ",".join(str(group) for group in self._get_prefetched_groups(obj))
+
+    def get_groups_search(self, obj):
+        return ",".join(str(group.id) for group in self._get_prefetched_groups(obj))
+
+    def get_product_search(self, obj):
+        return ",".join(
+            str(group.batch.product.sku)
+            for group in self._get_prefetched_groups(obj)
+            if group.batch and group.batch.product
+        )
+
+    def get_groups_amount(self, obj):
+        return len(self._get_prefetched_groups(obj))
+
+    def get_product_amount(self, obj):
+        return sum(group.quantity for group in self._get_prefetched_groups(obj))
+
 
 class BatchSerializer(serializers.ModelSerializer):
-    product = ProductSerializer(many=False, read_only=True)
-
     class Meta:
         model = Batch
-        ref_name = 'BatchSerializer_Operation'
-        read_only_fields = ("product",)
-        fields = ["id", "product", "batch_number", "expiration_date"]
+        fields = ["id", "batch_number"]
 
 
 class GroupSerializer(serializers.ModelSerializer):
-    """Serializer pro detailní informace o skupině (group)."""
-    batch = BatchSerializer(many=False, read_only=True)
-    box = BoxSerializer(many=False, read_only=True)
-
     class Meta:
         model = Group
-        ref_name = 'GroupSerializer_Operation'
-        fields = ['quantity', 'batch','box']
+        fields = ['quantity', 'batch', 'box']
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        return data
 
 
 
-class OperationSerializer(serializers.ModelSerializer):
+class OperationSerializer(GroupStatsMixin, serializers.ModelSerializer):
     groups_amount = serializers.SerializerMethodField()
     product_amount = serializers.SerializerMethodField()
     groups_id = serializers.PrimaryKeyRelatedField(
@@ -43,7 +62,7 @@ class OperationSerializer(serializers.ModelSerializer):
         required=False,  # Pole je volitelné
         allow_null=True  # Povolení hodnoty None
     )
-    groups = GroupSerializer(many=True, read_only=True)
+    groups = serializers.SerializerMethodField()
     groups_search = serializers.SerializerMethodField()
     product_search = serializers.SerializerMethodField()
     groups_name = serializers.SerializerMethodField()
@@ -112,25 +131,36 @@ class OperationSerializer(serializers.ModelSerializer):
             'invoice_vat': obj.invoice_vat,
         }
 
-    def get_groups_name(self, obj):
-        if hasattr(obj, '_prefetched_objects_cache') and 'groups' in obj._prefetched_objects_cache:
-            return ",".join([str(group) for group in obj.groups.all()])
-        return ""
+    def get_groups(self, obj):
+        groups = self._get_prefetched_groups(obj)
+        return GroupSerializer(groups, many=True).data
 
-    def get_groups_search(self, obj):
-        return ",".join(map(str, obj.groups.values_list('id', flat=True)))
 
-    def get_product_search(self, obj):
-        return ",".join(obj.groups.all().values_list('batch__product__sku', flat=True))
+class OperationListSerializer(GroupStatsMixin, serializers.ModelSerializer):
+    groups_amount = serializers.SerializerMethodField()
+    product_amount = serializers.SerializerMethodField()
+    groups_id = serializers.PrimaryKeyRelatedField(
+        queryset=Group.objects.all(),
+        source="groups",
+        many=True,
+        required=False,
+        allow_null=True
+    )
+    groups_search = serializers.SerializerMethodField()
+    product_search = serializers.SerializerMethodField()
+    groups_name = serializers.SerializerMethodField()
 
-    def get_groups_amount(self, obj):
-        return obj.groups.count()
+    class Meta:
+        model = Operation
+        read_only_fields = (
+            'id', 'groups_id', "groups_amount", "groups_search",
+            "product_search", 'product_amount', 'groups_name',
+        )
+        fields = [
+            'id', 'description', 'number', 'groups_id', 'type', 'status', 'updated_at',
+            "groups_amount", "groups_search", "product_search", 'product_amount', 'groups_name',
+        ]
 
-    def get_product_amount(self, obj):
-        groups = getattr(obj, '_prefetched_objects_cache', {}).get('groups')
-        if groups is not None:
-            return sum(group.quantity for group in groups)
-        return sum(group.quantity for group in obj.groups.all())
 
 
 class OperationProductSerializer(serializers.Serializer):
@@ -307,69 +337,3 @@ class InOperationBulkSerializer(serializers.Serializer):
             client_id=validated_data["client_id"],
             products=validated_data["products"]
         )
-
-class OperationListSerializer(serializers.ModelSerializer):
-    groups_amount = serializers.SerializerMethodField()
-    product_amount = serializers.SerializerMethodField()
-    groups_id = serializers.PrimaryKeyRelatedField(
-        queryset=Group.objects.all(),
-        source="groups",
-        many=True,
-        required=False,  # Pole je volitelné
-        allow_null=True  # Povolení hodnoty None
-    )
-    groups_search = serializers.SerializerMethodField()
-    product_search = serializers.SerializerMethodField()
-    groups_name = serializers.SerializerMethodField()
-
-    class Meta:
-        model = Operation
-        read_only_fields = (
-            'id',
-            'groups_id',
-            "groups_amount",
-            "groups_search",
-            "product_search",
-            'product_amount',
-            'groups_name',
-        )
-        fields = [
-            'id',
-            'description',
-            'number',
-            'groups_id',
-            'type',
-            'status',
-            'updated_at',
-            "groups_amount",
-            "groups_search",
-            "product_search",
-            'product_amount',
-            'groups_name',
-        ]
-
-    def get_groups_name(self, obj):
-        groups = self._get_prefetched_groups(obj)
-        return ",".join(str(group) for group in groups)
-
-    def get_groups_search(self, obj):
-        groups = self._get_prefetched_groups(obj)
-        return ",".join(str(group.id) for group in groups)
-
-    def get_product_search(self, obj):
-        groups = self._get_prefetched_groups(obj)
-        return ",".join(
-            str(group.batch.product.sku)
-            for group in groups
-            if group.batch and group.batch.product
-        )
-
-    def get_groups_amount(self, obj):
-        return len(self._get_prefetched_groups(obj))
-
-    def get_product_amount(self, obj):
-        groups = self._get_prefetched_groups(obj)
-        return sum(group.quantity for group in groups)
-
-    def _get_prefetched_groups(self, obj):
-        return getattr(obj, '_prefetched_objects_cache', {}).get('groups', obj.groups.all())

@@ -20,6 +20,10 @@ class ChatBotAssistantThread(models.Model):
     stat_id = models.CharField(max_length=50, null=True, blank=True)
     model = models.CharField(max_length=50, null=True, blank=True, choices=OPEANAI_MODEL, default='opeanai')
 
+    class Meta:
+        unique_together = ('user', 'client', 'stat_id', 'model')
+
+
     def __str__(self):
         return "%s" % (self.thread_id)
 

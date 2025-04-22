@@ -55,7 +55,7 @@ class ProductViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'], url_path='search')
     def search(self, request):
         query = request.GET.get('q', '')
-        client_id = request.GET.get('clientId', '')
+        client_id = request.GET.get('client_id', '')
 
         if not query:
             return Response({"detail": "Query parameter 'q' is required."}, status=status.HTTP_400_BAD_REQUEST)

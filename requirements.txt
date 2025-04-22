@@ -37,3 +37,4 @@ pandas
 openpyxl
 django-querycount
 gunicorn
+matplotlib

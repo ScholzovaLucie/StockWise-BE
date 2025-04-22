@@ -22,7 +22,7 @@ OPENAI_MODEL = os.getenv("OPENAI_MODEL")
 AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY")
 AZURE_OPENAI_API_VERSION = os.getenv("AZURE_OPENAI_API_VERSION")
 AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT")
-USE_AZURE = True
+USE_AZURE = False
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/4.2/howto/deployment/checklist/
@@ -55,7 +55,6 @@ INSTALLED_APPS = [
     'warehouse',
     'batch',
     'box',
-    'chat_log',
     'client',
     'group',
     'history',

@@ -10,7 +10,6 @@ from django.http import JsonResponse
 from openai import AzureOpenAI, OpenAI
 from rest_framework.parsers import MultiPartParser, JSONParser
 from rest_framework.views import APIView
-
 from chatbot.assistant_threads.models import ChatBotAssistantThread, OPEANAI_MODEL
 from chatbot.assistantDataCreator import get_function
 from client.models import Client
@@ -171,12 +170,15 @@ class OpenAIHandler:
         ).order_by("-token_count").first()
 
         if not thread:
+            thread_obj = self.client.beta.threads.create()
             thread = ChatBotAssistantThread.objects.create(
                 user=user,
                 client=client,
                 stat_id=None,
-                model=model
+                model=model,
+                thread_id=thread_obj.id,
             )
+
         return self.client.beta.threads.messages.list(thread_id=thread.thread_id)
 
     def run_prompt(self, user, client, prompt, assistant_id, stat_id=None):
@@ -184,7 +186,7 @@ class OpenAIHandler:
         if cache.get(lock_key):
             raise Exception("Statistika již běží, zkus to za chvíli.")
 
-        cache.set(lock_key, True, timeout=90)  # lock na 90 sekund
+        cache.set(lock_key, True, timeout=90)
 
         try:
             thread = self.get_or_create_thread(user, client, stat_id)
@@ -357,7 +359,6 @@ class ChatbotView(APIView):
 
                 return JsonResponse(list(reversed(messages)), safe=False)
 
-            # Nahraný soubor – převedeme na JSON
             if file:
                 try:
                     if file.name.endswith(".csv"):

@@ -16,6 +16,7 @@ class OperationViewSet(viewsets.ReadOnlyModelViewSet):
     """
     queryset = Operation.objects.all()
     serializer_class = OperationSerializer
+    pagination_class = PageNumberPagination
     permission_classes = [IsAuthenticated]
 
     def get_serializer_class(self):
@@ -28,12 +29,14 @@ class OperationViewSet(viewsets.ReadOnlyModelViewSet):
         client_ids = list(self.request.user.client.values_list('id', flat=True))
 
         groups_qs = Group.objects.select_related(
-            'batch__product', 'box'
+            'batch__product',
+            'box'
+        ).select_related(
+            'batch'
         )
+        prefetch = Prefetch('groups', queryset=groups_qs, to_attr='prefetched_groups')
 
-        queryset = Operation.objects.prefetch_related(
-            Prefetch('groups', queryset=groups_qs)
-        ).select_related('client').order_by('-updated_at')
+        queryset = Operation.objects.prefetch_related(prefetch).select_related('client').order_by('-updated_at')
 
         if client_id and int(client_id) in client_ids:
             queryset = queryset.filter(client_id=client_id)
@@ -85,7 +88,7 @@ class OperationViewSet(viewsets.ReadOnlyModelViewSet):
         paginated_data = paginator.paginate_queryset(operations, request)
 
         serializer = self.get_serializer(paginated_data, many=True)
-        return Response(serializer.data)
+        return paginator.get_paginated_response(serializer.data)
 
     @action(detail=False, methods=['get'], url_path='types')
     def get_types(self, request):
@@ -100,9 +103,14 @@ class OperationViewSet(viewsets.ReadOnlyModelViewSet):
     @action(detail=False, methods=['get'], url_path='all')
     def get_all_operations(self, request):
         """Vrátí seznam všech operací (objednávek)."""
-        operations = Operation.objects.all()
-        serializer = OperationSerializer(operations, many=True)
-        return Response(serializer.data, status=200)
+        operations = self.get_queryset()
+
+        paginator = PageNumberPagination()
+        paginator.page_size = request.GET.get('page_size') or 10
+        paginated_data = paginator.paginate_queryset(operations, request)
+
+        serializer = self.get_serializer(paginated_data, many=True)
+        return paginator.get_paginated_response(serializer.data)
 
     @action(detail=False, methods=['post'], url_path='create')
     def create_operation(self, request):
