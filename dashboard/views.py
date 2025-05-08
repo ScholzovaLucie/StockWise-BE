@@ -156,11 +156,15 @@ def dashboard_recent_activity(request):
     # Filtr podle období
     if from_date or to_date:
         if from_date:
-            from_date = parse_date(from_date)
-            history_query = history_query.filter(timestamp__gte=from_date)
+            from_date_parsed = parse_date(from_date)
+            if from_date_parsed is None:
+                return Response({"detail": "Invalid from_date format."}, status=400)
+            history_query = history_query.filter(timestamp__gte=from_date_parsed)
         if to_date:
-            to_date = parse_date(to_date)
-            history_query = history_query.filter(timestamp__lte=to_date)
+            to_date_parsed = parse_date(to_date)
+            if to_date_parsed is None:
+                return Response({"detail": "Invalid to_date format."}, status=400)
+            history_query = history_query.filter(timestamp__lte=to_date_parsed)
     elif year or month or day:
         if year:
             history_query = history_query.filter(timestamp__year=year)

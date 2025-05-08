@@ -87,14 +87,14 @@ def login_user(request):
         value=access_token,
         httponly=True,
         secure=True,
-        samesite="Strict"
+        samesite="None"
     )
     response.set_cookie(
         key="refresh_token",
         value=str(refresh),
         httponly=True,
-        secure=True, 
-        samesite="Strict"
+        secure=True,
+        samesite="None"
     )
 
     return response
@@ -138,8 +138,8 @@ def refresh_token(request):
             key="access_token",
             value=new_access_token,
             httponly=True,
-            secure=False,  # Nastav na True v produkci
-            samesite="Lax"
+            secure=True,
+            samesite="None"
         )
         return response
     except Exception as e:

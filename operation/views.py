@@ -3,12 +3,14 @@ from functools import reduce
 from django.db.models import Prefetch
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
-from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from operation.serializers import OperationSerializer, OperationListSerializer
 from operation.services.operation_service import *
 from django.db.models import Q
+
+from utils.pagination import CustomPageNumberPagination
+
 
 class OperationViewSet(viewsets.ReadOnlyModelViewSet):
     """
@@ -16,7 +18,7 @@ class OperationViewSet(viewsets.ReadOnlyModelViewSet):
     """
     queryset = Operation.objects.all()
     serializer_class = OperationSerializer
-    pagination_class = PageNumberPagination
+    pagination_class = CustomPageNumberPagination
     permission_classes = [IsAuthenticated]
 
     def get_serializer_class(self):
@@ -83,7 +85,7 @@ class OperationViewSet(viewsets.ReadOnlyModelViewSet):
         if client_id:
             operations = operations.filter(client_id=client_id)
 
-        paginator = PageNumberPagination()
+        paginator = CustomPageNumberPagination()
         paginator.page_size = request.GET.get('page_size') or 10
         paginated_data = paginator.paginate_queryset(operations, request)
 
@@ -105,7 +107,7 @@ class OperationViewSet(viewsets.ReadOnlyModelViewSet):
         """Vrátí seznam všech operací (objednávek)."""
         operations = self.get_queryset()
 
-        paginator = PageNumberPagination()
+        paginator = CustomPageNumberPagination()
         paginator.page_size = request.GET.get('page_size') or 10
         paginated_data = paginator.paginate_queryset(operations, request)
 

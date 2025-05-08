@@ -19,10 +19,6 @@ load_dotenv()
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_MODEL = os.getenv("OPENAI_MODEL")
-AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY")
-AZURE_OPENAI_API_VERSION = os.getenv("AZURE_OPENAI_API_VERSION")
-AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT")
-USE_AZURE = False
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/4.2/howto/deployment/checklist/
@@ -120,6 +116,11 @@ CSRF_TRUSTED_ORIGINS = [
 
 CORS_ALLOW_CREDENTIALS = True
 
+SESSION_COOKIE_SAMESITE = 'None'
+SESSION_COOKIE_SECURE = True
+CSRF_COOKIE_SAMESITE = 'None'
+CSRF_COOKIE_SECURE = True
+
 ROOT_URLCONF = 'StockWise.urls'
 
 TEMPLATES = [
@@ -152,22 +153,18 @@ DATABASES = {
         'PASSWORD': 'Noidlevinedowney12+',
         'HOST': 'aws-0-eu-west-2.pooler.supabase.com',
         'PORT': '5432',
-    },
-    'test': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'postgres',
-        'USER': 'postgres.kxaimwahllfzjuxtpphz',
-        'PASSWORD': 'Noidlevinedowney12',
-        'HOST': 'aws-0-eu-west-2.pooler.supabase.com',
-        'PORT': '6543',
-        'TEST': {
-            'NAME': None,
-        }
     }
 }
 
 if 'test' in sys.argv or os.getenv('TESTING') == '1':
-    DATABASES['default'] = DATABASES['test']
+    DATABASES['default'] = {
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': 'stockwise_test',
+        'USER': 'postgres',
+        'PASSWORD': 'postgres',
+        'HOST': 'postgres',
+        'PORT': '5432',
+    }
 
 # Password validation
 # https://docs.djangoproject.com/en/4.2/ref/settings/#auth-password-validators

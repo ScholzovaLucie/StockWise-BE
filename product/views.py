@@ -3,7 +3,6 @@ from itertools import chain
 
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
-from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 from django.db.models import Q, Sum, Prefetch
 
@@ -71,7 +70,7 @@ class ProductViewSet(viewsets.ModelViewSet):
         if client_id:
             queryset = queryset.filter(client_id=client_id)
 
-        paginator = PageNumberPagination()
+        paginator = CustomPageNumberPagination()
         paginator.page_size = request.GET.get('page_size') or 10
         paginated = paginator.paginate_queryset(queryset, request)
 

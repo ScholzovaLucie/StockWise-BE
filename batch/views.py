@@ -2,17 +2,18 @@ from functools import reduce
 
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
-from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 from django.db.models import Q
 
 from batch.models import Batch
 from batch.serializers import BatchSerializer
+from utils.pagination import CustomPageNumberPagination
 
 
 class BatchViewSet(viewsets.ModelViewSet):
     queryset = Batch.objects.all()
     serializer_class = BatchSerializer
+    pagination_class = CustomPageNumberPagination
 
     def get_queryset(self):
         queryset = Batch.objects.all()
@@ -55,11 +56,11 @@ class BatchViewSet(viewsets.ModelViewSet):
             )
 
         if client_id:
-            batches = batches.filter(item__client_id=client_id)
+            batches = batches.filter(product__client_id=client_id)
 
-        paginator = PageNumberPagination()
+        paginator = CustomPageNumberPagination()
         paginator.page_size = request.GET.get('page_size') or 10
         paginated_data = paginator.paginate_queryset(batches, request)
 
         serializer = self.get_serializer(paginated_data, many=True)
-        return Response(serializer.data)
+        return paginator.get_paginated_response(serializer.data)

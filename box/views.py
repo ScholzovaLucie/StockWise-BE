@@ -3,19 +3,20 @@ from functools import reduce
 from django.shortcuts import get_object_or_404
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
-from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 from django.db.models import Q, Prefetch
 
 from box.models import Box
 from box.serializers import BoxSerializer
 from group.models import Group
+from utils.pagination import CustomPageNumberPagination
 
 
 # Create your views here.
 class BoxViewSet(viewsets.ModelViewSet):
     queryset = Box.objects.all()
     serializer_class = BoxSerializer
+    pagination_class = CustomPageNumberPagination
 
     def get_queryset(self):
         return Box.objects.prefetch_related(
@@ -32,13 +33,14 @@ class BoxViewSet(viewsets.ModelViewSet):
         data_query = query.split(',')
         if len(data_query) > 1:
             data_query = [term.strip() for term in data_query if term.strip()]
+
             query_filters = reduce(
                 lambda q, term: q |
                                 Q(ean__icontains=term) |
-                                Q(position__code__icontains=term) |
-                data_query
+                                Q(position__code__icontains=term),
+                data_query,
+                Q()
             )
-
             boxes = Box.objects.filter(query_filters).distinct("id")
 
         else:
@@ -47,12 +49,12 @@ class BoxViewSet(viewsets.ModelViewSet):
                 Q(position__code__icontains=query)
             )
 
-        paginator = PageNumberPagination()
+        paginator = CustomPageNumberPagination()
         paginator.page_size = request.GET.get('page_size') or 10
         paginated_data = paginator.paginate_queryset(boxes, request)
 
         serializer = self.get_serializer(paginated_data, many=True)
-        return Response(serializer.data)
+        return paginator.get_paginated_response(serializer.data)
 
     @action(detail=True, methods=['get'], url_path='products')
     def get_products_in_box(self, request, pk=None):
@@ -60,10 +62,8 @@ class BoxViewSet(viewsets.ModelViewSet):
 
         box = get_object_or_404(Box, id=pk)
 
-        # Najdeme všechny grupy (produkty) v této krabici
         groups = Group.objects.filter(box=box)
 
-        # Sumarizujeme produkty podle jejich `batch.product`
         product_summary = {}
         for group in groups:
             product = group.batch.product

@@ -2,12 +2,12 @@ from functools import reduce
 
 from rest_framework import viewsets
 from rest_framework.decorators import action
-from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 from django.db.models import Q
 
 from position.models import Position
 from position.serializers import PositionSerializer
+from utils.pagination import CustomPageNumberPagination
 
 
 # Create your views here.
@@ -42,7 +42,7 @@ class PositionViewSet(viewsets.ModelViewSet):
                 Q(warehouse__name__icontains=query)
             )
 
-        paginator = PageNumberPagination()
+        paginator = CustomPageNumberPagination()
         paginator.page_size = request.GET.get('page_size') or 10
         paginated_data = paginator.paginate_queryset(positions, request)
 

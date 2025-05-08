@@ -9,6 +9,8 @@ from django.db.models import Q
 from functools import reduce
 from operator import or_
 
+from utils.pagination import CustomPageNumberPagination
+
 
 class HistoryViewSet(viewsets.ModelViewSet):
     queryset = History.objects.all()
@@ -32,7 +34,7 @@ class HistoryViewSet(viewsets.ModelViewSet):
 
         history = History.objects.filter(search_query).select_related("user")
 
-        paginator = PageNumberPagination()
+        paginator = CustomPageNumberPagination()
         paginator.page_size = request.GET.get("page_size", 10)
         paginated_data = paginator.paginate_queryset(history, request)
 
@@ -46,7 +48,7 @@ class HistoryViewSet(viewsets.ModelViewSet):
         if related_id is not None:
             queryset = queryset.filter(related_id=related_id)
 
-        paginator = PageNumberPagination()
+        paginator = CustomPageNumberPagination()
         paginator.page_size = request.GET.get("page_size", 10)
         paginated_data = paginator.paginate_queryset(queryset, request)
 

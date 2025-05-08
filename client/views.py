@@ -8,6 +8,7 @@ from django.db.models import Q
 
 from client.models import Client
 from client.serializers import ClientSerializer
+from utils.pagination import CustomPageNumberPagination
 
 
 # Create your views here.
@@ -51,7 +52,7 @@ class ClientViewSet(viewsets.ModelViewSet):
         if client_id:
             clients = clients.filter(id=client_id)
 
-        paginator = PageNumberPagination()
+        paginator = CustomPageNumberPagination()
         paginator.page_size = request.GET.get('page_size') or 10
         paginated_data = paginator.paginate_queryset(clients, request)
 

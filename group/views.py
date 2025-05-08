@@ -9,6 +9,7 @@ from django.db.models import Q
 
 from group.models import Group
 from group.serializers import GroupSerializer, GroupListSerializer
+from utils.pagination import CustomPageNumberPagination
 
 
 # Create your views here.
@@ -73,7 +74,7 @@ class GroupViewSet(viewsets.ModelViewSet):
         if client_id:
             groups = groups.filter(batch__item__client_id=client_id)
 
-        paginator = PageNumberPagination()
+        paginator = CustomPageNumberPagination()
         paginator.page_size = request.GET.get('page_size') or 10
         paginated_data = paginator.paginate_queryset(groups, request)
 

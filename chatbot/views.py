@@ -17,21 +17,12 @@ from client.models import Client
 logger = logging.getLogger(__name__)
 
 API_KEY = settings.OPENAI_API_KEY
-AZURE_API_KEY = settings.AZURE_OPENAI_API_KEY
 
 
 class OpenAIHandler:
     def __init__(self):
-        if settings.USE_AZURE:
-            self.client = AzureOpenAI(
-                api_key=settings.AZURE_OPENAI_API_KEY,
-                api_version=settings.AZURE_OPENAI_API_VERSION,
-                azure_endpoint=settings.AZURE_OPENAI_ENDPOINT
-            )
-            self.model = OPEANAI_MODEL[0]  # model pro Azure
-        else:
-            self.client = OpenAI(api_key=settings.OPENAI_API_KEY)
-            self.model = OPEANAI_MODEL[1]  # model pro OpenAI
+        self.client = OpenAI(api_key=settings.OPENAI_API_KEY)
+        self.model = OPEANAI_MODEL[0]
 
     def get_or_create_thread(self, user, client, stat_id=None):
         filters = {"user": user, "client": client, "model": self.model}
