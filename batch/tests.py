@@ -1,23 +1,9 @@
 import pytest
 import uuid
 from rest_framework import status
-from rest_framework.test import APIClient
 
 from batch.models import Batch
-from client.models import Client
 from product.models import Product
-from user.models import User
-
-
-@pytest.fixture
-def client_factory(db):
-    def create_client(**kwargs):
-        defaults = {
-            'name': 'Test Client',
-        }
-        defaults.update(kwargs)
-        return Client.objects.create(**defaults)
-    return create_client
 
 
 @pytest.fixture
@@ -39,29 +25,9 @@ def batch_factory(db, client_factory):
     return create_batch
 
 
-@pytest.fixture
-@pytest.mark.django_db
-def user_with_client(client_factory):
-    client = client_factory()
-    user = User.objects.create(
-        email='testuser@example.com',
-        password='testpass'
-    )
-    user.client.add(client)
-    return user
-
-@pytest.fixture
-def api_client():
-    return APIClient()
-
-@pytest.fixture
-def authenticated_client(api_client, user_with_client):
-    api_client.force_authenticate(user=user_with_client)
-    return api_client
-
-
 @pytest.mark.django_db
 class TestBatchViewSetList:
+    @pytest.mark.django_db
     def test_list_batches_for_user_client(self, authenticated_client, batch_factory, user_with_client):
         client = user_with_client.client.first()
         batch = batch_factory(client=client)
@@ -71,6 +37,7 @@ class TestBatchViewSetList:
         assert response.status_code == status.HTTP_200_OK
         assert any(b['id'] == batch.id for b in response.data.get('results'))
 
+    @pytest.mark.django_db
     def test_list_batches_filters_by_client_id(self, authenticated_client, batch_factory, client_factory):
         other_client = client_factory()
         batch = batch_factory(client=other_client)
@@ -80,9 +47,6 @@ class TestBatchViewSetList:
         assert response.status_code == status.HTTP_200_OK
         assert all(b['product'] == batch.product for b in response.data.get('results'))
 
-
-@pytest.mark.django_db
-class TestBatchViewSetSearch:
     def test_search_requires_query_param(self, authenticated_client):
         response = authenticated_client.get('/api/batches/search/')
 

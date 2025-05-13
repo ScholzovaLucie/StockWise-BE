@@ -24,8 +24,10 @@ from django.utils import timezone
 @permission_classes([IsAuthenticated])
 def dashboard_config(request):
     """
-    Načte nebo vytvoří konfiguraci dashboardu pro přihlášeného uživatele.
-    Vrací pole widgetů a jejich layout.
+    Vrací konfiguraci dashboardu (widgety a layout) pro aktuálního uživatele.
+
+    :param request: HTTP GET požadavek, volitelně s parametrem 'stats'
+    :return: Response s konfigurací dashboardu
     """
     stats = request.GET.get("stats")
     type = 'main'
@@ -43,8 +45,10 @@ def dashboard_config(request):
 @permission_classes([IsAuthenticated])
 def update_dashboard_config(request):
     """
-    Uloží novou konfiguraci dashboardu (widgety a layout) pro přihlášeného uživatele.
-    Očekává data ve formátu { "widgets": [...], "layout": [...] }
+    Uloží konfiguraci dashboardu pro aktuálního uživatele.
+
+    :param request: HTTP POST požadavek s JSON daty {"widgets": [...], "layout": [...]}
+    :return: Response s potvrzením
     """
     stats = request.GET.get("stats")
     type = 'main'
@@ -59,6 +63,12 @@ def update_dashboard_config(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def dashboard_overview(request):
+    """
+    Vrací přehled základních metrik skladu pro daného klienta (nebo všechny).
+
+    :param request: HTTP GET s volitelným 'clientId'
+    :return: Response s přehledem metrik
+    """
     client_id = request.query_params.get("clientId")
 
     products = Product.objects.filter(client_id=client_id) if client_id else Product.objects.all()
@@ -122,7 +132,10 @@ def dashboard_overview(request):
 @permission_classes([IsAuthenticated])
 def dashboard_low_stock(request):
     """
-    Vrací seznam produktů s nízkými zásobami (pod stanoveným prahem).
+    Vrací seznam produktů s nízkou zásobou pod definovaným prahem.
+
+    :param request: HTTP GET, volitelně s 'clientId'
+    :return: Response se seznamem produktů
     """
     client_id = request.query_params.get("clientId")
     threshold = 10
@@ -141,8 +154,10 @@ def dashboard_low_stock(request):
 @permission_classes([IsAuthenticated])
 def dashboard_recent_activity(request):
     """
-    Vrací statistiky historie s možností filtrování podle období (rok, měsíc, den) a typu aktivity.
-    Pokud není specifikováno období, výchozí je poslední týden.
+    Vrací data o nedávné aktivitě ve skladu (historie změn) s možností filtrování dle času a klienta.
+
+    :param request: HTTP GET s filtry: year, month, day, from_date, to_date, clientId
+    :return: Response s daty pro graf a posledními 10 změnami
     """
     year = request.GET.get("filters[year]")
     month = request.GET.get("filters[month]")
@@ -241,7 +256,10 @@ def dashboard_recent_activity(request):
 @permission_classes([IsAuthenticated])
 def dashboard_alerts(request):
     """
-    Vrací seznam alertů – produkty s nízkým stavem zásob.
+    Vrací seznam alertů na produkty s nízkým stavem zásob.
+
+    :param request: HTTP GET s volitelným clientId
+    :return: Response se seznamem alertů
     """
     products = Product.objects.all()
     client_id = request.query_params.get("clientId")
@@ -266,6 +284,12 @@ def dashboard_alerts(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def dashboard_active_operations(request):
+    """
+    Vrací seznam aktuálně aktivních operací (status CREATED nebo BOX).
+
+    :param request: HTTP GET, volitelně s 'clientId'
+    :return: Response se seznamem aktivních operací
+    """
     client_id = request.query_params.get("clientId")
     operations = Operation.objects.all()
     if client_id:
@@ -289,7 +313,10 @@ def dashboard_active_operations(request):
 @permission_classes([IsAuthenticated])
 def dashboard_stats(request):
     """
-    Vrací statistiky operací s možností filtrování podle období.
+    Vrací statistiky operací – celkem, dokončené, zrušené, probíhající.
+
+    :param request: HTTP GET s volitelnými filtry období a clientId
+    :return: Response se statistikami operací
     """
     year = request.GET.get("filters[year]")
     month = request.GET.get("filters[month]")
@@ -339,7 +366,10 @@ def dashboard_stats(request):
 @permission_classes([IsAuthenticated])
 def dashboard_efficiency(request):
     """
-    Vrací statistiku efektivity skladu.
+    Vrací statistiku efektivity skladu – celkovou, týdenní, průměrnou historickou.
+
+    :param request: HTTP GET s volitelným 'clientId'
+    :return: Response s procentuálními hodnotami efektivity
     """
     now_time = now()
     week_ago = now_time - timedelta(days=7)
@@ -379,6 +409,12 @@ def dashboard_efficiency(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def my_widgets(request):
+    """
+    Vrací uložené widgety pro dashboard aktuálního uživatele.
+
+    :param request: HTTP GET s volitelným 'stats' parametrem
+    :return: Response se seznamem widgetů
+    """
     dashboard_type = 'main'
     if request.query_params.get("stats") and request.query_params.get("stats") != 'false':
         dashboard_type = 'stats'
@@ -391,6 +427,12 @@ def my_widgets(request):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def save_widgets(request):
+    """
+    Uloží seznam widgetů pro dashboard aktuálního uživatele.
+
+    :param request: HTTP POST s daty {"widgets": [...], "stats": bool}
+    :return: Response s potvrzením
+    """
     dashboard_type = 'main'
     if request.data.get("stats") and request.data.get("stats") != 'false':
         dashboard_type = 'stats'
@@ -407,6 +449,12 @@ def save_widgets(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def dashboard_extended_stats(request):
+    """
+    Vrací rozšířené statistiky: trendy operací, průměrná doba dokončení a top uživatelé.
+
+    :param request: HTTP GET s volitelným 'clientId'
+    :return: Response s třemi typy dat: trend, průměrná doba a top uživatelé
+    """
     # 📊 Trend operací za poslední týden pro každého uživatele
     client_id = request.query_params.get("clientId")
     operations = Operation.objects.all()

@@ -2,7 +2,6 @@ from functools import reduce
 
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
-from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 from django.db.models import Q
 
@@ -11,12 +10,20 @@ from client.serializers import ClientSerializer
 from utils.pagination import CustomPageNumberPagination
 
 
-# Create your views here.
 class ClientViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet pro správu klientů. Zahrnuje standardní CRUD operace a vlastní vyhledávání.
+    """
     queryset = Client.objects.all()
     serializer_class = ClientSerializer
+    pagination_class = CustomPageNumberPagination
 
     def get_queryset(self):
+        """
+        Vrací queryset klientů omezený podle oprávnění uživatele nebo podle ID.
+
+        :return: Queryset modelu Client
+        """
         queryset = Client.objects.all()
         client_id = self.request.GET.get('client_id')
         user_clients = self.request.user.client.all().values_list('id', flat=True)
@@ -28,11 +35,18 @@ class ClientViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'], url_path='search')
     def search(self, request):
+        """
+        Vyhledávání klientů podle jména nebo emailu. Podporuje vícenásobné výrazy oddělené čárkou.
+
+        :param request: HTTP GET požadavek s parametry 'q', 'clientId' a volitelně 'page_size'
+        :return: JSON odpověď s výsledky hledání
+        """
         query = request.GET.get('q', '')
         client_id = request.GET.get('clientId', '')
 
         if not query:
             return Response({"detail": "Query parameter 'q' is required."}, status=status.HTTP_400_BAD_REQUEST)
+
         data_query = query.split(',')
         if len(data_query) > 1:
             data_query = [term.strip() for term in data_query if term.strip()]
@@ -41,9 +55,7 @@ class ClientViewSet(viewsets.ModelViewSet):
                 data_query,
                 Q()
             )
-
             clients = Client.objects.filter(query_filters).only('id')
-
         else:
             clients = Client.objects.filter(
                 Q(name__icontains=query) | Q(email__icontains=query)

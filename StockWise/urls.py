@@ -58,14 +58,13 @@ router.register(r'warehouses', WarehouseViewSet)
 router.register(r'operations', OperationViewSet)
 router.register(r'groups', GroupViewSet)
 router.register(r'positions', PositionViewSet)
-router.register(r'histories', HistoryViewSet)
+router.register(r'history', HistoryViewSet)
 router.register(r'boxes', BoxViewSet)
 router.register(r'products', ProductViewSet)
 
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/', include(router.urls)),
-    path('api/products/', include('product.urls'), name="products"),
     path('api/auth/', include('user.urls')),
     path('swagger/', schema_view.with_ui('swagger', cache_timeout=0), name='schema-swagger-ui'),
     path('redoc/', schema_view.with_ui('redoc', cache_timeout=0), name='schema-redoc'),

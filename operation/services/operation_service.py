@@ -15,7 +15,17 @@ from product.models import Product
 
 def create_operation(user, operation_type, number, description, client_id, products, delivery_data=None, invoice_data=None):
     """
-    Vytvoření operace (výdejka/příjemka) se zadanými produkty, klientem, krabicemi a dodacími údaji.
+    Vytvoří novou operaci (příjemku/výdejku) a přiřadí k ní produkty.
+
+    :param user: Přihlášený uživatel
+    :param operation_type: Typ operace ("IN" nebo "OUT")
+    :param number: Číslo operace
+    :param description: Popis operace
+    :param client_id: ID klienta
+    :param products: Seznam produktů s množstvím a případnými daty (šarže, expirace, box)
+    :param delivery_data: (volitelné) dodací údaje pro výdejku
+    :param invoice_data: (volitelné) fakturační údaje pro výdejku
+    :return: Objekt vytvořené operace nebo dict s chybou
     """
     try:
         if operation_type not in ['IN', 'OUT']:
@@ -82,7 +92,15 @@ def create_operation(user, operation_type, number, description, client_id, produ
 ### 🔹 **Přidání skupiny do příjemky**
 def add_group_to_in_operation(operation, product_id, batch_number, box_id, quantity, expiration_date=None):
     """
-    Přidání skupiny (Group) do příjemky – vytvoření nové šarže nebo přidání do existující.
+    Přidá novou skupinu (Group) do příjemky.
+
+    :param operation: Operace, ke které se skupina přidává
+    :param product_id: ID produktu
+    :param batch_number: Název šarže
+    :param box_id: ID krabice
+    :param quantity: Množství
+    :param expiration_date: (volitelné) expirace šarže
+    :return: Vytvořená skupina
     """
     product = Product.objects.get(id=product_id)
 
@@ -121,7 +139,14 @@ def add_group_to_in_operation(operation, product_id, batch_number, box_id, quant
 
 def add_group_to_out_operation(operation, product_id, quantity, batch_number=None, expiration_date=None):
     """
-    Přidání existující skupiny (Group) do výdejky – hledá odpovídající skladovou zásobu a rozdělí ji, pokud je potřeba.
+    Přidá existující skupinu (Group) do výdejky – případně ji rozdělí.
+
+    :param operation: Výdejka
+    :param product_id: ID produktu
+    :param quantity: Požadované množství
+    :param batch_number: (volitelné) Šarže
+    :param expiration_date: (volitelné) Expirace
+    :return: Seznam přidaných nebo rozdělených skupin
     """
     product = Product.objects.get(id=product_id)
     quantity = int(quantity)
@@ -190,7 +215,10 @@ def add_group_to_out_operation(operation, product_id, quantity, batch_number=Non
 ### 🔹 **Funkce pro správu krabic**
 def create_new_box(ean):
     """
-    Vytvoří novou krabici při příjmu zboží.
+    Vytvoří novou krabici podle zadaného EAN.
+
+    :param ean: EAN krabice
+    :return: Objekt krabice
     """
     return Box.objects.create(ean=ean or '')
 
@@ -199,6 +227,9 @@ def create_new_box(ean):
 def set_delivery_data(operation, delivery_data):
     """
     Nastaví dodací údaje pro výdejku.
+
+    :param operation: Výdejka
+    :param delivery_data: Slovník s dodacími údaji
     """
     operation.delivery_name = delivery_data.get("delivery_name")
     operation.delivery_street = delivery_data.get("delivery_street")
@@ -210,6 +241,12 @@ def set_delivery_data(operation, delivery_data):
     operation.save()
 
 def set_invoice_data(operation, invoice_data):
+    """
+    Nastaví fakturační údaje pro výdejku.
+
+    :param operation: Výdejka
+    :param invoice_data: Slovník s fakturačními údaji
+    """
     operation.invoice_name = invoice_data.get("invoice_name")
     operation.invoice_street = invoice_data.get("invoice_street")
     operation.invoice_city = invoice_data.get("invoice_city")
@@ -223,7 +260,11 @@ def set_invoice_data(operation, invoice_data):
 
 def update_operation(operation, data):
     """
-    Aktualizace operace.
+    Aktualizuje operaci o zadaná data.
+
+    :param operation: Operace
+    :param data: Slovník s aktualizačními daty
+    :return: Aktualizovaná operace
     """
     allowed_fields = [
         "description",
@@ -262,6 +303,13 @@ def update_operation(operation, data):
     return operation
 
 def remove_operation(operation):
+    """
+    Smaže operaci pokud je to možné podle typu.
+
+    :param operation: Operace ke smazání
+    :return: True pokud úspěšně smazána
+    :raises: Exception pokud nelze smazat
+    """
     if operation.type == 'IN':
         groups = operation.groups.all()
         other_operations_exist = any(
@@ -284,8 +332,15 @@ def remove_operation(operation):
         return True
 
 def add_product_to_box(operation_id, box_id, product_id, quantity):
-    """Přidání produktu do krabice s rozdělením množství a označením `rescanned`"""
+    """
+    Přidá produkt do krabice v rámci dané operace, případně rozdělí groupy.
 
+    :param operation_id: ID operace
+    :param box_id: ID krabice
+    :param product_id: ID produktu
+    :param quantity: Množství
+    :return: Slovník s potvrzením
+    """
     with transaction.atomic():
         operation = get_object_or_404(Operation, id=operation_id)
         box = get_object_or_404(Box, id=box_id)
@@ -338,8 +393,12 @@ def add_product_to_box(operation_id, box_id, product_id, quantity):
         return {"message": f"Produkt {product.name} přidán do krabice {box.ean} v počtu {quantity} ks."}
 
 def get_operation_product_summary(operation_id):
-    """Vrátí seznam produktů a jejich celkové množství v operaci"""
+    """
+    Vrátí seznam produktů v dané operaci a jejich množství (celkové a rescanned).
 
+    :param operation_id: ID operace
+    :return: List slovníků se souhrnem podle produktu
+    """
     operation = get_object_or_404(Operation, id=operation_id)
 
     product_summary = {}

@@ -16,6 +16,9 @@ class BatchViewSet(viewsets.ModelViewSet):
     pagination_class = CustomPageNumberPagination
 
     def get_queryset(self):
+        """
+        Vrací šarže omezené na klienty, ke kterým má uživatel přístup
+        """
         queryset = Batch.objects.all()
         client_id = self.request.GET.get('client_id')
         client_ids = self.request.user.client.all().values_list('id', flat=True)
@@ -26,6 +29,9 @@ class BatchViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'], url_path='search')
     def search(self, request):
+        """
+        Vlastní akce pro vyhledávání šarží podle dotazu
+        """
         query = request.GET.get('q', '')
         client_id = request.GET.get('clientId', '')
 
@@ -35,18 +41,17 @@ class BatchViewSet(viewsets.ModelViewSet):
         data_query = query.split(',')
         if len(data_query) > 1:
             data_query = [term.strip() for term in data_query if term.strip()]
+            # Sestavení složeného OR dotazu přes více polí
             query_filters = reduce(
                 lambda q, term: q
                                 | Q(product__name__icontains=term)
                                 | Q(product__sku__icontains=term)
-                                | Q( batch_number__icontains=term)
-                                | Q( expiration_date__icontains=term),
+                                | Q(batch_number__icontains=term)
+                                | Q(expiration_date__icontains=term),
                 data_query,
                 Q()
             )
-
             batches = Batch.objects.filter(query_filters).distinct()
-
         else:
             batches = Batch.objects.filter(
                 Q(product__name__icontains=query) |

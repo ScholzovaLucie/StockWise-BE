@@ -12,12 +12,19 @@ from group.serializers import GroupSerializer, GroupListSerializer
 from utils.pagination import CustomPageNumberPagination
 
 
-# Create your views here.
 class GroupViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet pro správu skupin (Group). Obsahuje standardní CRUD a vlastní akce pro vyhledávání a odebrání z boxu.
+    """
     queryset = Group.objects.all()
     serializer_class = GroupSerializer
 
     def get_queryset(self):
+        """
+        Vrací queryset omezený na klienty přihlášeného uživatele. Volitelně filtruje podle konkrétního klienta.
+
+        :return: Queryset skupin s přednačtenými relacemi
+        """
         client_id = self.request.GET.get('client_id')
         client_ids = self.request.user.client.all().values_list('id', flat=True)
 
@@ -34,12 +41,23 @@ class GroupViewSet(viewsets.ModelViewSet):
         return queryset
 
     def get_serializer_class(self):
+        """
+        Vrací jiný serializer při list akci (zkrácený výstup).
+
+        :return: Serializer třída
+        """
         if self.action == "list":
             return GroupListSerializer
         return GroupSerializer
 
     @action(detail=False, methods=['get'], url_path='search')
     def search(self, request):
+        """
+        Vyhledávání skupin podle více parametrů (id, SKU, název produktu, číslo šarže, EAN).
+
+        :param request: HTTP GET požadavek s parametry "q" a volitelně "clientId"
+        :return: JSON odpověď se serializovanými daty
+        """
         query = request.GET.get('q', '')
         client_id = request.GET.get('clientId', '')
 
@@ -59,9 +77,7 @@ class GroupViewSet(viewsets.ModelViewSet):
                 data_query,
                 Q()
             )
-
             groups = Group.objects.filter(query_filters).only("id")
-
         else:
             groups = Group.objects.filter(
                 Q(id__icontains=query) |
@@ -72,7 +88,7 @@ class GroupViewSet(viewsets.ModelViewSet):
             )
 
         if client_id:
-            groups = groups.filter(batch__item__client_id=client_id)
+            groups = groups.filter(batch__product__client_id=client_id)
 
         paginator = CustomPageNumberPagination()
         paginator.page_size = request.GET.get('page_size') or 10
@@ -84,14 +100,16 @@ class GroupViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'], url_path='remove_from_box')
     def remove_from_box(self, request, pk=None):
         """
-        Odebere grupu z krabice (resetuje její box na None)
+        Odebere grupu z krabice (nastaví její box na None).
+
+        :param request: HTTP POST požadavek
+        :param pk: Primární klíč grupy
+        :return: JSON odpověď s potvrzením
         """
         group = get_object_or_404(Group, id=pk)
 
-        # Odebereme krabici (box) z grupy
         group.box = None
-        group.rescanned = False  # Reset flag
+        group.rescanned = False  # Resetuje příznak přenaskenování
         group.save()
 
         return Response({"message": f"Produkt {group.batch.product.name} odebrán z krabice."}, status=200)
-

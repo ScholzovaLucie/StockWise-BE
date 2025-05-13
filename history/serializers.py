@@ -16,7 +16,7 @@ class HistorySerializer(serializers.ModelSerializer):
 
     class Meta:
         model = History
-        fields = ['id', 'type', 'description', 'timestamp', 'user_name', 'data']
+        fields = ['id', 'type', 'description', 'timestamp', 'user_name', 'data', 'related_id']
 
     def get_user_name(self, obj):
         return obj.user.name if obj.user else None

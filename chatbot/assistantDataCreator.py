@@ -13,8 +13,7 @@ from group.serializers import GroupSerializer, GroupBulkSerializer
 from history.models import History
 from history.serializers import HistorySerializer
 from operation.models import Operation
-from operation.serializers import OperationSerializer, OutOperationSerializer, InOperationSerializer, \
-    OutOperationBulkSerializer, InOperationBulkSerializer
+from operation.serializers import OperationSerializer, OutOperationSerializer, InOperationSerializer
 from position.models import Position
 from position.serializers import PositionSerializer, PositionBulkSerializer
 from product.models import Product
@@ -25,13 +24,26 @@ from warehouse.models import Warehouse
 from warehouse.serializers import WarehouseSerializer, WarehouseBulkSerializer
 
 def with_type(func, history_type):
+    """
+    Pomocná funkce pro vložení typu historie do volané funkce.
+
+    :param func: Funkce pro zpracování historie
+    :param history_type: Typ historie (např. 'batch', 'operation')
+    :return: Lambda funkce volající `func` s dodaným typem
+    """
     return lambda call_id, parameters, client_id, model, serializer, user: \
         func(call_id, parameters, client_id, model, serializer, user, history_type)
 
 
 def get_function(function_name):
     available_functions = {
-        # Get
+        """
+        Vrací trojici (funkce, model, serializer) podle názvu funkce.
+
+        :param function_name: Název funkce (např. 'getProducts')
+        :return: Tuple (funkce, model, serializer)
+        """
+        # GET funkce – získání dat
         'getBatches': (AssistantDataCreator().get_data, Batch, BatchSerializer),
         'getClients': (AssistantDataCreator().get_data, Client, ClientSerializer),
         'getGroups': (AssistantDataCreator().get_data, Group, GroupSerializer),
@@ -48,7 +60,7 @@ def get_function(function_name):
         'getGroupHistory': (with_type(AssistantDataCreator().get_specific_history_data, 'group'), History, HistorySerializer),
         'getPositionHistory': (with_type(AssistantDataCreator().get_specific_history_data, 'position'), History, HistorySerializer),
 
-        # Post
+        # POST funkce – vytvoření objektů (single/bulk)
         'createBatch': (AssistantDataCreator().create_data, Batch, BatchSerializer),
         'createClient': (AssistantDataCreator().create_data, Client, ClientSerializer),
         'createGroup': (AssistantDataCreator().create_data, Group, GroupSerializer),
@@ -64,12 +76,12 @@ def get_function(function_name):
         'createGroups': (AssistantDataCreator().bulk_create_data, Group, GroupBulkSerializer),
         'createClients': (AssistantDataCreator().bulk_create_data, Client, ClientBulkSerializer),
         'createWarehouses': (AssistantDataCreator().bulk_create_data, Warehouse, WarehouseBulkSerializer),
-        'createOutOperations': (AssistantDataCreator().bulk_create_data, Operation, OutOperationBulkSerializer),
-        'createInOperations': (AssistantDataCreator().bulk_create_data, Operation, InOperationBulkSerializer),
+        'createOutOperations': (AssistantDataCreator().bulk_create_data, Operation, OutOperationSerializer),
+        'createInOperations': (AssistantDataCreator().bulk_create_data, Operation, InOperationSerializer),
         'createPositions': (AssistantDataCreator().bulk_create_data, Position, PositionBulkSerializer),
         'createUsers': (AssistantDataCreator().bulk_create_data, User, UserBulkSerializer),
 
-        # Update
+        # UPDATE funkce – aktualizace dat
         'updateBatch': (AssistantDataCreator().update_data, Batch, BatchSerializer),
         'updateClient': (AssistantDataCreator().update_data, Client, ClientSerializer),
         'updateGroup': (AssistantDataCreator().update_data, Group, GroupSerializer),
@@ -84,6 +96,17 @@ def get_function(function_name):
 
 class AssistantDataCreator(object):
     def get_history_data(self, call_id, parameters, client_id, model, serializer, user):
+        """
+        Získá historii dle zadaných parametrů.
+
+        :param call_id: ID volání nástroje
+        :param parameters: Parametry pro filtrování
+        :param client_id: ID klienta
+        :param model: Model (např. History)
+        :param serializer: Serializér pro model
+        :param user: Uživatel volající funkci
+        :return: Formátovaná historie jako dict
+        """
         data_query = model.objects.all()
 
         if 'type' in parameters:
@@ -97,10 +120,27 @@ class AssistantDataCreator(object):
         return self.format_data(HistorySerializer, data_query, call_id)
 
     def get_specific_history_data(self, call_id, parameters, client_id, model, serializer, user, history_type):
+        """
+        Získá historii pro specifický typ záznamu.
+
+        :param history_type: Typ historie (např. 'operation')
+        :return: Formátovaná historie jako dict
+        """
         parameters['type'] = history_type
         return self.get_history_data(call_id, parameters, client_id, model, serializer, user)
 
     def get_data(self, call_id, parameters, client_id, model, serializer, user):
+        """
+        Obecné získání dat z daného modelu s volitelným filtrováním.
+
+        :param call_id: ID volání nástroje
+        :param parameters: Filtrovací parametry
+        :param client_id: ID klienta
+        :param model: Django model
+        :param serializer: Příslušný serializer
+        :param user: Uživatel
+        :return: dict
+        """
         data_query = model.objects.all()
 
         if client_id:
@@ -125,6 +165,7 @@ class AssistantDataCreator(object):
                 else:
                     data_query = data_query.filter(**{param: parameters.get(param)})
 
+        # Vrací pouze počet
         if parameters.get('onlyCount'):
             count_of_data_query = data_query.count()
             return {
@@ -135,6 +176,17 @@ class AssistantDataCreator(object):
         return self.format_data(serializer, data_query, call_id)
 
     def update_data(self, call_id, parameters, client_id, model, serializer, user):
+        """
+        Aktualizuje instanci modelu podle ID a vstupních parametrů.
+
+        :param call_id: ID volání nástroje
+        :param parameters: Aktualizační data (musí obsahovat ID)
+        :param client_id: ID klienta (nevyužito)
+        :param model: Django model
+        :param serializer: Příslušný serializer
+        :param user: Uživatel
+        :return: dict
+        """
         instance_id = parameters.get('id')
         if not instance_id:
             return {
@@ -167,6 +219,17 @@ class AssistantDataCreator(object):
             }
 
     def create_data(self, call_id, parameters, client_id, model, serializer, user):
+        """
+            Vytvoří novou instanci modelu.
+
+            :param call_id: ID volání nástroje
+            :param parameters: Data pro vytvoření
+            :param client_id: ID klienta
+            :param model: Django model
+            :param serializer: Příslušný serializer
+            :param user: Uživatel
+            :return: dict
+            """
         try:
             parameters['user_id'] = user.id
             if client_id:
@@ -190,6 +253,17 @@ class AssistantDataCreator(object):
             }
 
     def bulk_create_data(self, call_id, parameters, client_id, model, serializer, user):
+        """
+        Hromadné vytvoření instancí modelu.
+
+        :param call_id: ID volání nástroje
+        :param parameters: Slovník s klíčem "items" – seznam dat
+        :param client_id: ID klienta
+        :param model: Django model
+        :param serializer: Příslušný serializer
+        :param user: Uživatel
+        :return: dict
+        """
         try:
             items = parameters.get('items')
             if not items or not isinstance(items, list):
@@ -224,14 +298,27 @@ class AssistantDataCreator(object):
             }
 
     def get_operation_statuses(self, call_id, parameters, client_id, model, serializer, user):
+        """
+        Vrací seznam dostupných stavů operací.
+
+        :param call_id: ID volání nástroje
+        :return: dict
+        """
         return {
             'tool_call_id': call_id,
             'output': Operation.OPERATION_STATUS_CHOICES
         }
 
-
     @staticmethod
     def format_data(serializer, data_query, call_id):
+        """
+        Serializuje queryset do JSON formátu.
+
+        :param serializer: Serializér pro výstup
+        :param data_query: Queryset s daty
+        :param call_id: ID volání nástroje
+        :return: dict
+        """
         if data_query is []:
             return None
 
@@ -249,6 +336,14 @@ class AssistantDataCreator(object):
 
     @staticmethod
     def filter_by_year(date, data_query, model):
+        """
+        Filtrování dat podle roku.
+
+        :param date: Rok
+        :param data_query: Queryset
+        :param model: Django model
+        :return: queryset
+        """
         data = None
         if 'created' in dir(model):
             data = data_query.filter(created__year=date)
@@ -260,6 +355,14 @@ class AssistantDataCreator(object):
 
     @staticmethod
     def filter_by_month(date, data_query, model):
+        """
+        Filtrování dat podle měsíce.
+
+        :param date: Měsíc
+        :param data_query: Queryset
+        :param model: Django model
+        :return: queryset
+        """
         data = None
         if 'created' in dir(model):
             data = data_query.filter(created__month=date)
@@ -271,6 +374,14 @@ class AssistantDataCreator(object):
 
     @staticmethod
     def filter_by_day(date, data_query, model):
+        """
+        Filtrování dat podle dne.
+
+        :param date: Den
+        :param data_query: Queryset
+        :param model: Django model
+        :return: Filtrovaný queryset
+        """
         data = None
         if 'created' in dir(model):
             data = data_query.filter(created__day=date)

@@ -14,32 +14,6 @@ from warehouse.models import Warehouse
 
 
 @pytest.fixture
-def client_factory(db):
-    def create_client(**kwargs):
-        return Client.objects.create(name="Test Client", **kwargs)
-    return create_client
-
-
-@pytest.fixture
-def user_with_client(client_factory):
-    client = client_factory()
-    user = User.objects.create(email='boxuser@example.com', password='testpass')
-    user.client.add(client)
-    return user
-
-
-@pytest.fixture
-def api_client():
-    return APIClient()
-
-
-@pytest.fixture
-def authenticated_client(api_client, user_with_client):
-    api_client.force_authenticate(user=user_with_client)
-    return api_client
-
-
-@pytest.fixture
 def box_with_product(db, client_factory):
     client = client_factory()
     product = Product.objects.create(name='BoxProduct', sku=f'SKU-{uuid.uuid4()}', client=client)

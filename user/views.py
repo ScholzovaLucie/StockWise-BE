@@ -58,7 +58,7 @@ def register_user(request):
     if User.objects.filter(email=email).exists():
         return Response({"error": "Uživatel s tímto e-mailem již existuje."}, status=400)
 
-    user = User.objects.create(
+    user = User.objects.create_user(
         email=email,
         password=make_password(password)
     )

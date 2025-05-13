@@ -12,19 +12,24 @@ from group.models import Group
 from utils.pagination import CustomPageNumberPagination
 
 
-# Create your views here.
 class BoxViewSet(viewsets.ModelViewSet):
     queryset = Box.objects.all()
     serializer_class = BoxSerializer
     pagination_class = CustomPageNumberPagination
 
     def get_queryset(self):
+        """
+        Načítá boxy s přednačtením ID skupin (pro optimalizaci)
+        """
         return Box.objects.prefetch_related(
             Prefetch('groups', queryset=Group.objects.only('id'))
         )
 
     @action(detail=False, methods=['get'], url_path='search')
     def search(self, request):
+        """
+        Vyhledávání boxů podle EAN nebo kódu pozice
+        """
         query = request.GET.get('q', '')
 
         if not query:
@@ -42,7 +47,6 @@ class BoxViewSet(viewsets.ModelViewSet):
                 Q()
             )
             boxes = Box.objects.filter(query_filters).distinct("id")
-
         else:
             boxes = Box.objects.filter(
                 Q(ean__icontains=query) |
@@ -58,10 +62,10 @@ class BoxViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['get'], url_path='products')
     def get_products_in_box(self, request, pk=None):
-        """Získání seznamu produktů v konkrétní krabici"""
-
+        """
+        Vrací produkty (skupiny) obsažené v konkrétní krabici
+        """
         box = get_object_or_404(Box, id=pk)
-
         groups = Group.objects.filter(box=box)
 
         product_summary = {}

@@ -19,11 +19,13 @@ logger = logging.getLogger(__name__)
 API_KEY = settings.OPENAI_API_KEY
 
 
+# OpenAI handler a statistiky pomocí definovaných promptů
 class OpenAIHandler:
     def __init__(self):
         self.client = OpenAI(api_key=settings.OPENAI_API_KEY)
         self.model = OPEANAI_MODEL[0]
 
+    # Vrátí existující vlákno nebo vytvoří nové
     def get_or_create_thread(self, user, client, stat_id=None):
         filters = {"user": user, "client": client, "model": self.model}
         if stat_id:
@@ -42,6 +44,7 @@ class OpenAIHandler:
             )
         return thread
 
+    # Resetuje konverzační vlákno (použije nové ID)
     def reset_thread(self, client, user, stat=None):
         stock_thread = ChatBotAssistantThread.objects.filter(
             user=user,
@@ -55,6 +58,7 @@ class OpenAIHandler:
             stock_thread.thread_id = self.client.beta.threads.create().id
             stock_thread.save(update_fields=['thread_id', 'token_count'])
 
+    # Zruší aktivní runy (čekající nebo probíhající)
     def cancel_active_runs(self, thread_id, timeout=10):
         runs = self.client.beta.threads.runs.list(thread_id=thread_id).data
         active = [r for r in runs if r.status in ["queued", "in_progress", "requires_action"]]
@@ -77,6 +81,7 @@ class OpenAIHandler:
             if final_status not in ["cancelled", "completed", "failed"]:
                 raise Exception(f"Nelze pokračovat – run {run.id} má stále status: {final_status}")
 
+    # Pošle uživatelský prompt do vlákna
     def send_prompt(self, thread_id, prompt):
         self.client.beta.threads.messages.create(
             thread_id=thread_id,
@@ -84,12 +89,14 @@ class OpenAIHandler:
             content=prompt
         )
 
+    # Spustí běh asistenta nad threadem
     def create_run(self, assistant_id, thread_id):
         return self.client.beta.threads.runs.create(
             thread_id=thread_id,
             assistant_id=assistant_id
         )
 
+    # Čeká na dokončení běhu (polling se zpožděním)
     def wait_for_completion(self, thread_id, run_id, client_id, user, timeout=90):
         for i in range(timeout):
             status = self.client.beta.threads.runs.retrieve(thread_id=thread_id, run_id=run_id)
@@ -107,6 +114,7 @@ class OpenAIHandler:
             time.sleep(sleep_time)
         raise Exception("Timeout při čekání na dokončení runu.")
 
+    # Zpracuje výzvy na funkce (tool calls)
     def _handle_tool_calls(self, calls, client_id, run, user, thread_id):
         results = []
         for call in calls:
@@ -125,6 +133,7 @@ class OpenAIHandler:
             tool_outputs=results
         )
 
+    # Získá odpověď z vlákna (text nebo obrázek)
     def get_response(self, thread_id):
         messages = self.client.beta.threads.messages.list(thread_id=thread_id)
         if not messages.data:
@@ -136,6 +145,7 @@ class OpenAIHandler:
 
         content = latest.content[0]
 
+        # Obrázek
         if content.type == "image_file":
             file_id = content.image_file.file_id
             image_response = self.client.files.with_raw_response.retrieve_content(file_id)
@@ -146,12 +156,14 @@ class OpenAIHandler:
                 "alt": file_id
             }
 
+        # Text
         return {
             "element": "div",
             "content": content.text.value,
             "class": "assistant"
         }
 
+    # Vrací historii zpráv ve vlákně
     def get_thread_messages(self, user, client, model):
         thread = ChatBotAssistantThread.objects.filter(
             user=user,
@@ -172,6 +184,7 @@ class OpenAIHandler:
 
         return self.client.beta.threads.messages.list(thread_id=thread.thread_id)
 
+    # Hlavní metoda pro spuštění promptu
     def run_prompt(self, user, client, prompt, assistant_id, stat_id=None):
         lock_key = f"stat_lock_{user.id}_{client.id}_{stat_id}"
         if cache.get(lock_key):
@@ -191,6 +204,7 @@ class OpenAIHandler:
 
 
 class StatisticsView(APIView):
+    # Předdefinované prompty pro jednotlivé statistiky
     STAT_PROMPTS = {
         "stockSummary": (
             "Vygeneruj aktuální přehled stavu zásob na skladě. "
@@ -273,7 +287,9 @@ class StatisticsView(APIView):
     }
     ASSISTANT_KEY = 'asst_aa2kW75H12y8OKAg3jcvcYmk'
 
+    # Zpracování POST požadavku pro vygenerování statistiky
     def post(self, request):
+        # Validace vstupu a stat_id
         user = request.user
         client_id = request.data.get("client")
         stat_id = request.data.get("stat_id")
@@ -290,12 +306,14 @@ class StatisticsView(APIView):
         except ValueError as e:
             return JsonResponse({"error": str(e)}, status=404)
 
+        # Ověření cache
         cache_key = f"stat_cache_{user.id}_{client.id}_{stat_id}"
         cached_response = cache.get(cache_key)
         if cached_response:
             return JsonResponse(cached_response)
 
         try:
+            # Spuštění OpenAI promptu a uložení do cache
             handler = OpenAIHandler()
             response = handler.run_prompt(user=user, client=client, prompt=prompt, stat_id=stat_id, assistant_id=self.ASSISTANT_KEY)
             cache.set(cache_key, response, timeout=60 * 5)  # cache na 5 minut
@@ -308,8 +326,10 @@ class ChatbotView(APIView):
     parser_classes = [MultiPartParser, JSONParser]
     ASSISTANT_KEY = 'asst_ym2hrOmYeS2LfXOkP53HdCEn'
 
+    # Obsluha konverzace s chatbotem
     def post(self, request):
         try:
+            # Získání klienta a promptu
             user = request.user
             client_id = request.data.get("client")
             prompt = request.data.get("input_chat") or request.data.get("prompt")
@@ -350,6 +370,7 @@ class ChatbotView(APIView):
 
                 return JsonResponse(list(reversed(messages)), safe=False)
 
+            # Načtení dat ze souboru
             if file:
                 try:
                     if file.name.endswith(".csv"):
@@ -365,6 +386,7 @@ class ChatbotView(APIView):
             if not prompt:
                 return JsonResponse({"error": "Chybí vstupní prompt."}, status=400)
 
+            # Odeslání promptu do OpenAI a vrácení odpovědi
             response = handler.run_prompt(
                 user=user,
                 client=client,
@@ -377,6 +399,7 @@ class ChatbotView(APIView):
             logging.getLogger("django").error(f"Chyba v ChatbotView: {str(e)}")
             return JsonResponse({"error": str(e)}, status=500)
 
+# Pomocná funkce pro získání klienta nebo vyhození chyby
 def get_client_or_404(client_id):
     client = Client.objects.filter(id=client_id).first()
     if not client:

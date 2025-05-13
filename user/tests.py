@@ -1,3 +1,66 @@
-from django.test import TestCase
+import pytest
+from user.models import User
 
-# Create your tests here.
+
+@pytest.mark.django_db
+def test_register_user(authenticated_client):
+    response = authenticated_client.post("/api/auth/register/", {
+        "email": "test@example.com",
+        "password": "StrongPass1!"
+    })
+    assert response.status_code == 201
+    assert "user" in response.data
+
+
+@pytest.mark.django_db
+def test_register_user_weak_password(authenticated_client):
+    response = authenticated_client.post("/api/auth/register/", {
+        "email": "test@example.com",
+        "password": "weak"
+    })
+    assert response.status_code == 400
+    assert "error" in response.data
+
+
+@pytest.mark.django_db
+def test_login_user(api_client, user_factory):
+    password = "StrongPass1!"
+    user = user_factory(password=password)
+    response = api_client.post("/api/auth/login/", {
+        "email": user.email,
+        "password": password
+    })
+    assert response.status_code == 200
+    assert "user" in response.json()
+
+
+@pytest.mark.django_db
+def test_get_authenticated_user(authenticated_client, user_factory):
+    user = User.objects.first()
+    response = authenticated_client.get("/api/auth/me/")
+    assert response.status_code == 200
+    assert response.data["email"] == user.email
+
+
+@pytest.mark.django_db
+def test_change_password(authenticated_client, user_factory):
+    response = authenticated_client.post("/api/auth/change-password/", {
+        "old_password": 'testpass',
+        "new_password": "NewPass1!",
+        "confirm_password": "NewPass1!"
+    })
+    assert response.status_code == 200
+
+
+@pytest.mark.django_db
+def test_request_password_reset(authenticated_client):
+    response = authenticated_client.post("/api/auth/request-password-reset/", {
+        "email": "testuser@example.com"
+    })
+    assert response.status_code == 200
+
+
+@pytest.mark.django_db
+def test_logout_user(authenticated_client):
+    response = authenticated_client.post("/api/auth/logout/")
+    assert response.status_code == 200

@@ -5,10 +5,13 @@ from position.models import Position
 
 
 class BoxSerializer(serializers.ModelSerializer):
+    # ID pozice (vstup), mapuje se na objekt `position`
     position_id = serializers.PrimaryKeyRelatedField(
         queryset=Position.objects.all(), source="position"
     )
+    # Vrací informace o skupinách v boxu (pouze pro čtení)
     groups = serializers.SerializerMethodField()
+    # Vrací čitelný kód pozice
     position = serializers.SerializerMethodField()
 
     class Meta:
@@ -26,11 +29,13 @@ class BoxSerializer(serializers.ModelSerializer):
             'position',
         ]
 
+    # Vrátí kód pozice (např. A1)
     def get_position(self, obj):
         return getattr(obj.position, "code", None)
 
+    # Vrátí přehled skupin v boxu (počet a jejich ID)
     def get_groups(self, obj):
-        groups = list(obj.groups.all())  # načti jen jednou
+        groups = list(obj.groups.all())  # načte jednou, pokud není předfetchováno
         ids = [str(group.id) for group in groups]
         return {
             "count": len(groups),
@@ -38,6 +43,7 @@ class BoxSerializer(serializers.ModelSerializer):
             "title": ",".join(ids),
         }
 
+    # Podpora hromadného vytváření boxů, pokud přijde list
     def create(self, validated_data):
         print(validated_data)  # Debugging
 

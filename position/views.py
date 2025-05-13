@@ -1,6 +1,6 @@
 from functools import reduce
 
-from rest_framework import viewsets
+from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from django.db.models import Q
@@ -14,9 +14,17 @@ from utils.pagination import CustomPageNumberPagination
 class PositionViewSet(viewsets.ModelViewSet):
     queryset = Position.objects.all()
     serializer_class = PositionSerializer
+    pagination_class = CustomPageNumberPagination
 
     @action(detail=False, methods=['get'], url_path='search')
     def search(self, request):
+        """
+        Vyhledávání pozic podle zadaného dotazu `q`. Vyhledává v názvu skladu, EAN krabice a kódu pozice.
+
+        :param request: HTTP GET požadavek s parametrem `q` (řetězec nebo čárkami oddělený seznam výrazů)
+                        Nepovinně může obsahovat `page_size` pro stránkování výsledků.
+        :return: Stránkovaná JSON odpověď se seznamem pozic (Position) odpovídajících dotazu.
+        """
         query = request.GET.get('q', '')
         if not query:
             return Response({"detail": "Query parameter 'q' is required."}, status=status.HTTP_400_BAD_REQUEST)
@@ -47,4 +55,4 @@ class PositionViewSet(viewsets.ModelViewSet):
         paginated_data = paginator.paginate_queryset(positions, request)
 
         serializer = self.get_serializer(paginated_data, many=True)
-        return Response(serializer.data)
+        return paginator.get_paginated_response(serializer.data)
