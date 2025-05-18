@@ -2,6 +2,7 @@ import pytest
 from user.models import User
 
 
+# Test registrace s validními údaji
 @pytest.mark.django_db
 def test_register_user(authenticated_client):
     response = authenticated_client.post("/api/auth/register/", {
@@ -12,6 +13,7 @@ def test_register_user(authenticated_client):
     assert "user" in response.data
 
 
+# Test registrace se slabým heslem
 @pytest.mark.django_db
 def test_register_user_weak_password(authenticated_client):
     response = authenticated_client.post("/api/auth/register/", {
@@ -22,6 +24,7 @@ def test_register_user_weak_password(authenticated_client):
     assert "error" in response.data
 
 
+# Test přihlášení s platnými údaji
 @pytest.mark.django_db
 def test_login_user(api_client, user_factory):
     password = "StrongPass1!"
@@ -34,6 +37,7 @@ def test_login_user(api_client, user_factory):
     assert "user" in response.json()
 
 
+# Získání dat o aktuálně přihlášeném uživateli
 @pytest.mark.django_db
 def test_get_authenticated_user(authenticated_client, user_factory):
     user = User.objects.first()
@@ -42,6 +46,7 @@ def test_get_authenticated_user(authenticated_client, user_factory):
     assert response.data["email"] == user.email
 
 
+# Test změny hesla (předpokládá platné staré heslo 'testpass')
 @pytest.mark.django_db
 def test_change_password(authenticated_client, user_factory):
     response = authenticated_client.post("/api/auth/change-password/", {
@@ -52,6 +57,7 @@ def test_change_password(authenticated_client, user_factory):
     assert response.status_code == 200
 
 
+# Test odeslání požadavku na reset hesla
 @pytest.mark.django_db
 def test_request_password_reset(authenticated_client):
     response = authenticated_client.post("/api/auth/request-password-reset/", {
@@ -60,6 +66,7 @@ def test_request_password_reset(authenticated_client):
     assert response.status_code == 200
 
 
+# Test odhlášení uživatele
 @pytest.mark.django_db
 def test_logout_user(authenticated_client):
     response = authenticated_client.post("/api/auth/logout/")

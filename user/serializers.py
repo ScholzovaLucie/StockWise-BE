@@ -5,13 +5,22 @@ from user.models import User
 
 
 class UserSerializer(serializers.ModelSerializer):
+    """
+    Serializer pro práci s jedním uživatelem (vytvoření, úprava).
+
+    Atributy:
+        - email: E-mail uživatele
+        - password: Heslo (pouze pro zápis)
+        - client_id: Seznam klientů, ke kterým má uživatel přístup (many=True)
+        - name: Zobrazované jméno
+    """
     password = serializers.CharField(write_only=True, required=False)
     client_id = serializers.PrimaryKeyRelatedField(
         queryset=Client.objects.all(),
         source="client",
         many=True,
-        required=False,  # Pole je volitelné
-        allow_null=True  # Povolení hodnoty None
+        required=False,
+        allow_null=True
     )
 
     class Meta:
@@ -20,6 +29,7 @@ class UserSerializer(serializers.ModelSerializer):
         fields = ["id", "email", "client_id", "password", "name"]
 
     def update(self, instance, validated_data):
+        # Pokud je klient specifikován, nastaví se nové propojení (m2m)
         if "client" in validated_data:
             clients = validated_data.pop("client")
             instance.client.set(clients)
@@ -27,6 +37,15 @@ class UserSerializer(serializers.ModelSerializer):
 
 
 class UserBulkSerializer(serializers.ModelSerializer):
+    """
+    Serializer pro hromadné vytvoření uživatelů.
+
+    Atributy:
+        - email: E-mail uživatele
+        - password: Heslo (pouze pro zápis, volitelné)
+        - client_id: Seznam klientů
+        - name: Zobrazované jméno
+    """
     password = serializers.CharField(write_only=True, required=False)
     client_id = serializers.PrimaryKeyRelatedField(
         queryset=Client.objects.all(),
@@ -41,6 +60,7 @@ class UserBulkSerializer(serializers.ModelSerializer):
         fields = ["email", "client_id", "password", "name"]
 
     def create(self, validated_data):
+        # Hromadné vytvoření uživatelů včetně nastavení hesla
         users = []
         for item in validated_data:
             password = item.pop('password', None)

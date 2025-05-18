@@ -7,11 +7,20 @@ from warehouse.models import Warehouse
 
 
 class PositionSerializer(serializers.ModelSerializer):
-    boxes = serializers.SerializerMethodField()
+    """
+    Serializer pro jednotlivou pozici ve skladu.
+
+    Atributy:
+        - code: Kód pozice (např. A01)
+        - warehouse_id: ID skladu, ke kterému pozice patří (vstup)
+        - warehouse_name: Název skladu (pouze pro čtení)
+        - boxes: Informace o boxech na pozici – počet a jejich EANy (pouze pro čtení)
+    """
+    boxes = serializers.SerializerMethodField()  # Vrací seznam boxů s EANy
     warehouse_id = serializers.PrimaryKeyRelatedField(
-        queryset=Warehouse.objects.all(), source="warehouse"
+        queryset=Warehouse.objects.all(), source="warehouse"  # Mapuje se na relaci
     )
-    warehouse_name = serializers.SerializerMethodField()
+    warehouse_name = serializers.SerializerMethodField()  # Vrací čitelný název skladu
 
     class Meta:
         model = Position
@@ -19,6 +28,7 @@ class PositionSerializer(serializers.ModelSerializer):
         fields = ['id', 'code', 'boxes', 'warehouse_id', 'warehouse_name']
 
     def get_boxes(self, obj):
+        # Vrací počet boxů a seznam jejich EANů pro snadné dohledání
         boxes = obj.boxes.all()
         return {
             "count": len(boxes),
@@ -26,10 +36,18 @@ class PositionSerializer(serializers.ModelSerializer):
         }
 
     def get_warehouse_name(self, obj):
+        # Vrací název skladu, ke kterému pozice náleží
         return obj.warehouse.name
 
 
 class PositionBulkSerializer(serializers.ModelSerializer):
+    """
+    Serializer pro hromadné vytváření pozic.
+
+    Atributy:
+        - code: Kód pozice
+        - warehouse_id: ID skladu, ke kterému pozice patří
+    """
     warehouse_id = serializers.PrimaryKeyRelatedField(
         queryset=Warehouse.objects.all(), source="warehouse"
     )
@@ -39,4 +57,5 @@ class PositionBulkSerializer(serializers.ModelSerializer):
         fields = ['code', 'warehouse_id']
 
     def create(self, validated_data):
+        # Vytvoří více pozic najednou
         return Position.objects.bulk_create([Position(**item) for item in validated_data])

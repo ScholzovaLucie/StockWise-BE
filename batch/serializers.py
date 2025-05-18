@@ -5,10 +5,21 @@ from product.models import Product
 
 
 class BatchSerializer(serializers.ModelSerializer):
+    """
+    Serializer pro práci se šaržemi (batch).
+
+    Atributy:
+        - product_id: ID produktu, ke kterému šarže patří (vstup)
+        - batch_number: Číslo šarže
+        - expiration_date: Datum expirace
+        - product_name: Název produktu (pouze pro čtení)
+    """
+
     # Pole pro zadání ID produktu (PrimaryKey), mapuje se na `product`
     product_id = serializers.PrimaryKeyRelatedField(
         queryset=Product.objects.all(), source="product"
     )
+
     # Pouze pro čtení – získává název produktu
     product_name = serializers.SerializerMethodField()
 
@@ -32,6 +43,15 @@ class BatchSerializer(serializers.ModelSerializer):
 
 
 class BatchBulkSerializer(serializers.ModelSerializer):
+    """
+    Serializer pro čistě hromadné vytváření šarží.
+
+    Atributy:
+        - product_id: ID produktu (vstup)
+        - batch_number: Číslo šarže
+        - expiration_date: Datum expirace
+    """
+
     # Používá se pro čistě hromadné vytváření šarží
     product_id = serializers.PrimaryKeyRelatedField(
         queryset=Product.objects.all(), source="product"

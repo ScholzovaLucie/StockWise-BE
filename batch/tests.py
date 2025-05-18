@@ -6,6 +6,7 @@ from batch.models import Batch
 from product.models import Product
 
 
+# Fixture pro vytvoření instance Batch s možností přepsání výchozích hodnot
 @pytest.fixture
 def batch_factory(db, client_factory):
     def create_batch(**kwargs):
@@ -27,7 +28,7 @@ def batch_factory(db, client_factory):
 
 @pytest.mark.django_db
 class TestBatchViewSetList:
-    @pytest.mark.django_db
+    # Testuje, že endpoint vrací batch přiřazený klientovi přihlášeného uživatele
     def test_list_batches_for_user_client(self, authenticated_client, batch_factory, user_with_client):
         client = user_with_client.client.first()
         batch = batch_factory(client=client)
@@ -37,7 +38,7 @@ class TestBatchViewSetList:
         assert response.status_code == status.HTTP_200_OK
         assert any(b['id'] == batch.id for b in response.data.get('results'))
 
-    @pytest.mark.django_db
+    # Testuje, že je možné filtrovat batch podle client_id v query parametru
     def test_list_batches_filters_by_client_id(self, authenticated_client, batch_factory, client_factory):
         other_client = client_factory()
         batch = batch_factory(client=other_client)
@@ -47,12 +48,14 @@ class TestBatchViewSetList:
         assert response.status_code == status.HTTP_200_OK
         assert all(b['product'] == batch.product for b in response.data.get('results'))
 
+    # Testuje, že vyhledávání bez parametru `q` vrací chybu 400
     def test_search_requires_query_param(self, authenticated_client):
         response = authenticated_client.get('/api/batches/search/')
 
         assert response.status_code == status.HTTP_400_BAD_REQUEST
         assert response.data['detail'] == "Query parameter 'q' is required."
 
+    # Testuje vyhledávání batch podle jednoho výrazu
     def test_search_batches_by_single_term(self, authenticated_client, batch_factory):
         batch = batch_factory(batch_number="ABC123")
 
@@ -61,6 +64,7 @@ class TestBatchViewSetList:
         assert response.status_code == status.HTTP_200_OK
         assert any(b['id'] == batch.id for b in response.data.get('results'))
 
+    # Testuje vyhledávání batch podle více výrazů oddělených čárkou
     def test_search_batches_by_multiple_terms(self, authenticated_client, batch_factory):
         batch1 = batch_factory(batch_number="FIRST123")
         batch2 = batch_factory(product__name="SecondBatch")
@@ -72,6 +76,7 @@ class TestBatchViewSetList:
         assert batch1.id in batch_ids
         assert batch2.id in batch_ids
 
+    # Testuje, že vyhledávání lze omezit na konkrétního klienta pomocí clientId parametru
     def test_search_batches_filters_by_client_id(self, authenticated_client, batch_factory, client_factory):
         other_client = client_factory()
         batch = batch_factory(client=other_client, batch_number="XYZ789")

@@ -66,7 +66,6 @@ def extract_invoice_data(data):
     return {k: data.get(k) for k in keys}
 
 
-# --- Jednoduché serializéry ---
 
 class BatchSerializer(serializers.ModelSerializer):
     """
@@ -105,8 +104,6 @@ class OperationProductSerializer(serializers.Serializer):
     batch_name = serializers.CharField(required=False, allow_null=True)
     box_name = serializers.CharField(required=False, allow_null=True)
 
-
-# --- Serializéry pro výpis operací ---
 
 class OperationSerializer(GroupStatsMixin, serializers.ModelSerializer):
     """
@@ -173,8 +170,6 @@ class OperationListSerializer(GroupStatsMixin, serializers.ModelSerializer):
         ]
         read_only_fields = fields
 
-
-# --- Serializéry pro vytvoření operací (IN / OUT) ---
 
 class BaseOperationCreateSerializer(serializers.Serializer):
     """

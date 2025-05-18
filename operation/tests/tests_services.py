@@ -1,16 +1,9 @@
 import pytest
-from datetime import datetime
-from django.core.exceptions import ValidationError
-from client.models import Client
 from user.models import User
-from product.models import Product
-from operation.models import Operation
-from group.models import Group
-from batch.models import Batch
-from box.models import Box
 from operation.services.operation_service import *
 
 
+# Fixture pro vytvoření uživatele a klienta
 @pytest.fixture
 def user_with_client(client_factory):
     client = client_factory()
@@ -18,19 +11,21 @@ def user_with_client(client_factory):
     user.client.add(client)
     return user
 
-
+# Fixture pro vytvoření testovacího produktu
 @pytest.fixture
 def test_product(user_with_client):
     client = user_with_client.client.first()
     return Product.objects.create(name='Test Product', sku='TP001', client=client)
 
 
+# Testuje vytvoření nové krabice
 @pytest.mark.django_db
 def test_create_new_box():
     box = create_new_box('BOX123')
     assert box.ean == 'BOX123'
 
 
+# Testuje přidání skupiny do IN operace – vytvoření batch, group, přiřazení boxu
 @pytest.mark.django_db
 def test_add_group_to_in_operation_creates_group(user_with_client, test_product):
     client = user_with_client.client.first()
@@ -41,6 +36,7 @@ def test_add_group_to_in_operation_creates_group(user_with_client, test_product)
     assert group.batch.batch_number == 'B001'
 
 
+# Testuje výběr správných skupin pro OUT operaci podle batch a quantity
 @pytest.mark.django_db
 def test_add_group_to_out_operation_selects_correct_groups(user_with_client, test_product):
     batch = Batch.objects.create(batch_number='B002', product=test_product)
@@ -50,6 +46,7 @@ def test_add_group_to_out_operation_selects_correct_groups(user_with_client, tes
     assert sum(g.quantity for g in selected_groups) == 5
 
 
+# Testuje nastavení dodacích údajů operace
 @pytest.mark.django_db
 def test_set_delivery_data(user_with_client):
     operation = Operation.objects.create(number='OPD001', type='OUT', status='CREATED', user=user_with_client, client=user_with_client.client.first())
@@ -58,6 +55,7 @@ def test_set_delivery_data(user_with_client):
     assert operation.delivery_name == "Name"
 
 
+# Testuje nastavení fakturačních údajů operace
 @pytest.mark.django_db
 def test_set_invoice_data(user_with_client):
     operation = Operation.objects.create(number='OPI001', type='OUT', status='CREATED', user=user_with_client, client=user_with_client.client.first())
@@ -66,6 +64,7 @@ def test_set_invoice_data(user_with_client):
     assert operation.invoice_name == "Firm"
 
 
+# Testuje aktualizaci operace – popis + adresy
 @pytest.mark.django_db
 def test_update_operation_updates_fields(user_with_client):
     operation = Operation.objects.create(number='U001', type='OUT', status='CREATED', user=user_with_client, client=user_with_client.client.first())
@@ -79,6 +78,7 @@ def test_update_operation_updates_fields(user_with_client):
     assert updated.invoice_city == "Invo City"
 
 
+# Testuje odstranění IN operace – včetně odstranění napojených skupin
 @pytest.mark.django_db
 def test_remove_operation_in_type(user_with_client, test_product):
     client = user_with_client.client.first()
@@ -90,6 +90,7 @@ def test_remove_operation_in_type(user_with_client, test_product):
     assert not Operation.objects.filter(id=operation.id).exists()
 
 
+# Testuje přidání produktu do boxu pomocí `add_product_to_box`
 @pytest.mark.django_db
 def test_add_product_to_box(user_with_client, test_product):
     client = user_with_client.client.first()
@@ -102,6 +103,7 @@ def test_add_product_to_box(user_with_client, test_product):
     assert "EANBOX" in result['message']
 
 
+# Testuje získání souhrnu produktů v operaci (celkové množství atd.)
 @pytest.mark.django_db
 def test_get_operation_product_summary(user_with_client, test_product):
     batch = Batch.objects.create(product=test_product, batch_number="SUM001")
@@ -112,6 +114,7 @@ def test_get_operation_product_summary(user_with_client, test_product):
     assert summary[0]["total_quantity"] == 5
 
 
+# Testuje úspěšné vytvoření IN operace pomocí `create_operation`
 @pytest.mark.django_db
 def test_create_operation_in_success(user_with_client, test_product):
     client = user_with_client.client.first()
@@ -135,6 +138,7 @@ def test_create_operation_in_success(user_with_client, test_product):
     assert result.groups.count() == 1
 
 
+# Testuje chybějící skupinu (neexistující batch) při vytváření OUT operace – očekává se chybová odpověď
 @pytest.mark.django_db
 def test_create_operation_out_missing_group(user_with_client, test_product):
     client = user_with_client.client.first()
@@ -157,6 +161,7 @@ def test_create_operation_out_missing_group(user_with_client, test_product):
     assert "error" in result
 
 
+# Testuje zadání neplatného typu operace (např. "XYZ") – očekává se chybová odpověď
 @pytest.mark.django_db
 def test_create_operation_invalid_type(user_with_client, test_product):
     client = user_with_client.client.first()

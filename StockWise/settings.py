@@ -175,7 +175,7 @@ ADMIN_LANGUAGE_CODE = "en-us"
 TIME_ZONE = 'Europe/Prague'
 USE_I18N = True
 USE_L10N = True
-USE_TZ = False  # Nepoužíváš timezone-aware objekty
+USE_TZ = False
 
 # Statické soubory
 STATIC_URL = 'static/'
