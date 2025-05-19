@@ -8,7 +8,6 @@ from history.models import History
 from operation.models import Operation
 
 
-# Create your models here.
 class Product(models.Model):
     sku = models.CharField(max_length=100, unique=True)
     name = models.CharField(max_length=255)

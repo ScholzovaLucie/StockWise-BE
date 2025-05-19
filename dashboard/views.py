@@ -1,4 +1,3 @@
-# dashboard/api.py
 from datetime import timedelta, datetime
 from django.db.models import Q
 
@@ -6,6 +5,8 @@ from django.db.models.functions import TruncDay, TruncDate
 from django.utils import timezone
 from django.utils.dateparse import parse_date
 from django.utils.timezone import make_aware, now
+from drf_yasg import openapi
+from drf_yasg.utils import swagger_auto_schema
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -20,6 +21,9 @@ from .models import UserDashboardConfig
 from datetime import timedelta
 from django.utils import timezone
 
+@swagger_auto_schema(method='get', operation_description="Vrací konfiguraci dashboardu (widgety a layout) pro aktuálního uživatele.", manual_parameters=[
+    openapi.Parameter('stats', openapi.IN_QUERY, description="Vrací konfiguraci statistik místo hlavního dashboardu", type=openapi.TYPE_BOOLEAN)
+])
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def dashboard_config(request):
@@ -40,7 +44,7 @@ def dashboard_config(request):
         'layout': data.get('layout', [])
     })
 
-
+@swagger_auto_schema(method='post', operation_description="Uloží konfiguraci dashboardu pro aktuálního uživatele.")
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def update_dashboard_config(request):
@@ -60,6 +64,9 @@ def update_dashboard_config(request):
     return Response({'status': 'ok'})
 
 
+@swagger_auto_schema(method='get', operation_description="Vrací přehled základních metrik skladu pro daného klienta (nebo všechny).", manual_parameters=[
+    openapi.Parameter('clientId', openapi.IN_QUERY, description="ID klienta", type=openapi.TYPE_STRING)
+])
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def dashboard_overview(request):
@@ -128,6 +135,13 @@ def dashboard_overview(request):
     })
 
 
+@swagger_auto_schema(
+    method='get',
+    manual_parameters=[
+        openapi.Parameter('clientId', openapi.IN_QUERY, description="ID klienta (volitelné)", type=openapi.TYPE_STRING),
+    ],
+    operation_description="Vrací seznam produktů s nízkou zásobou pod definovaným prahem."
+)
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def dashboard_low_stock(request):
@@ -150,6 +164,18 @@ def dashboard_low_stock(request):
     return Response(list(low_stock))
 
 
+@swagger_auto_schema(
+    method='get',
+    manual_parameters=[
+        openapi.Parameter('filters[year]', openapi.IN_QUERY, description="Rok", type=openapi.TYPE_STRING),
+        openapi.Parameter('filters[month]', openapi.IN_QUERY, description="Měsíc", type=openapi.TYPE_STRING),
+        openapi.Parameter('filters[day]', openapi.IN_QUERY, description="Den", type=openapi.TYPE_STRING),
+        openapi.Parameter('filters[from_date]', openapi.IN_QUERY, description="Počáteční datum", type=openapi.TYPE_STRING),
+        openapi.Parameter('filters[to_date]', openapi.IN_QUERY, description="Koncové datum", type=openapi.TYPE_STRING),
+        openapi.Parameter('clientId', openapi.IN_QUERY, description="ID klienta", type=openapi.TYPE_STRING),
+    ],
+    operation_description="Vrací data o nedávné aktivitě ve skladu (historie změn) s možností filtrování dle času a klienta."
+)
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def dashboard_recent_activity(request):
@@ -252,6 +278,10 @@ def dashboard_recent_activity(request):
     return Response(data)
 
 
+@swagger_auto_schema(method='get', operation_description="Vrací seznam alertů na produkty s nízkým stavem zásob.",
+    manual_parameters=[
+        openapi.Parameter('clientId', openapi.IN_QUERY, description="ID klienta (volitelné)", type=openapi.TYPE_STRING)
+    ])
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def dashboard_alerts(request):
@@ -281,6 +311,10 @@ def dashboard_alerts(request):
     return Response(alerts)
 
 
+@swagger_auto_schema(method='get', operation_description="Vrací seznam aktuálně aktivních operací (status CREATED nebo BOX).",
+    manual_parameters=[
+        openapi.Parameter('clientId', openapi.IN_QUERY, description="ID klienta (volitelné)", type=openapi.TYPE_STRING)
+    ])
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def dashboard_active_operations(request):
@@ -309,6 +343,15 @@ def dashboard_active_operations(request):
     return Response(data)
 
 
+@swagger_auto_schema(method='get', operation_description="Vrací statistiky operací – celkem, dokončené, zrušené, probíhající.",
+    manual_parameters=[
+        openapi.Parameter('filters[year]', openapi.IN_QUERY, description="Rok", type=openapi.TYPE_STRING),
+        openapi.Parameter('filters[month]', openapi.IN_QUERY, description="Měsíc", type=openapi.TYPE_STRING),
+        openapi.Parameter('filters[day]', openapi.IN_QUERY, description="Den", type=openapi.TYPE_STRING),
+        openapi.Parameter('filters[from_date]', openapi.IN_QUERY, description="Od data (YYYY-MM-DD)", type=openapi.TYPE_STRING),
+        openapi.Parameter('filters[to_date]', openapi.IN_QUERY, description="Do data (YYYY-MM-DD)", type=openapi.TYPE_STRING),
+        openapi.Parameter('clientId', openapi.IN_QUERY, description="ID klienta (volitelné)", type=openapi.TYPE_STRING),
+    ])
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def dashboard_stats(request):
@@ -361,7 +404,31 @@ def dashboard_stats(request):
         'inProgressOperations': in_progress_operations,
     })
 
-
+@swagger_auto_schema(
+    method='get',
+    manual_parameters=[
+        openapi.Parameter(
+            'clientId',
+            openapi.IN_QUERY,
+            description="ID klienta, pro kterého se má statistika načíst (volitelné)",
+            type=openapi.TYPE_STRING
+        )
+    ],
+    responses={
+        200: openapi.Response(
+            description="Statistiky efektivity skladu",
+            examples={
+                "application/json": {
+                    "efficiency": 85.0,
+                    "weeklyEfficiency": 78.0,
+                    "avgEfficiency": 83.4,
+                    "description": "Procento dokončených operací"
+                }
+            }
+        )
+    },
+    operation_description="Vrací statistiku efektivity skladu – celkovou, týdenní, průměrnou historickou."
+)
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def dashboard_efficiency(request):
@@ -406,6 +473,14 @@ def dashboard_efficiency(request):
     })
 
 
+@swagger_auto_schema(
+    method='get',
+    operation_description="Vrací uložené widgety pro dashboard aktuálního uživatele.",
+    manual_parameters=[
+        openapi.Parameter('stats', openapi.IN_QUERY, description="Typ dashboardu (stats/main)", type=openapi.TYPE_BOOLEAN)
+    ],
+    responses={200: openapi.Response("Seznam widgetů")}
+)
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def my_widgets(request):
@@ -424,6 +499,19 @@ def my_widgets(request):
     return Response(data.get('widgets', []))
 
 
+@swagger_auto_schema(
+    method='post',
+    operation_description="Uloží seznam widgetů pro dashboard aktuálního uživatele.",
+    request_body=openapi.Schema(
+        type=openapi.TYPE_OBJECT,
+        properties={
+            'widgets': openapi.Schema(type=openapi.TYPE_ARRAY, items=openapi.Items(type=openapi.TYPE_OBJECT)),
+            'stats': openapi.Schema(type=openapi.TYPE_BOOLEAN)
+        },
+        required=['widgets']
+    ),
+    responses={200: openapi.Response("Potvrzení uložení")}
+)
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def save_widgets(request):
@@ -446,6 +534,14 @@ def save_widgets(request):
     return Response({'status': 'ok'})
 
 
+@swagger_auto_schema(
+    method='get',
+    operation_description="Vrací rozšířené statistiky: trendy operací, průměrná doba dokončení a top uživatelé.",
+    manual_parameters=[
+        openapi.Parameter('clientId', openapi.IN_QUERY, description="ID klienta", type=openapi.TYPE_STRING)
+    ],
+    responses={200: openapi.Response("Rozšířené statistiky")}
+)
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def dashboard_extended_stats(request):

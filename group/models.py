@@ -3,7 +3,6 @@ from django.db import models
 from history.models import History
 
 
-# Create your models here.
 class Group(models.Model):
     batch = models.ForeignKey('batch.Batch', on_delete=models.CASCADE, related_name="groups")
     box = models.ForeignKey('box.Box', null=True, on_delete=models.CASCADE, related_name="groups")

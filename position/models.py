@@ -3,7 +3,6 @@ from django.db import models
 from history.models import History
 
 
-# Create your models here.
 class Position(models.Model):
     code = models.CharField(max_length=100)
     warehouse = models.ForeignKey('warehouse.Warehouse', null=False, on_delete=models.CASCADE)

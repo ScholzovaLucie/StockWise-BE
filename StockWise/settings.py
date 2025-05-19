@@ -19,7 +19,7 @@ OPENAI_MODEL = os.getenv("OPENAI_MODEL")
 
 # NEPOUŽÍVEJTE TOTO V PRODUKCI BEZ ÚPRAV
 SECRET_KEY = 'django-insecure-994v!x)5h7$gy&$61bo(qsc&*8s%6nv%bzexsr!k!4k3)r*63v'
-DEBUG = False
+DEBUG = True
 ALLOWED_HOSTS = ['*']  # Otevřeno pro všechny – vhodné pouze pro vývoj
 
 # Seznam Django a vlastních aplikací

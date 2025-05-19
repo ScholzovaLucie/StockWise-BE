@@ -3,6 +3,8 @@ from datetime import timedelta
 from django.conf import settings
 from django.core.mail import send_mail
 from django.http import JsonResponse
+from drf_yasg import openapi
+from drf_yasg.utils import swagger_auto_schema
 from rest_framework import viewsets
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -42,6 +44,18 @@ class UserViewSet(viewsets.ModelViewSet):
             return User.objects.all()
         return User.objects.filter(id=user.id).only('id')
 
+@swagger_auto_schema(
+    method='post',
+    request_body=openapi.Schema(
+        type=openapi.TYPE_OBJECT,
+        required=['email', 'password'],
+        properties={
+            'email': openapi.Schema(type=openapi.TYPE_STRING),
+            'password': openapi.Schema(type=openapi.TYPE_STRING),
+        }
+    ),
+    responses={201: "Registrace byla úspěšná."}
+)
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def register_user(request):
@@ -67,6 +81,18 @@ def register_user(request):
     return Response({"message": "Registrace byla úspěšná.", "user": UserSerializer(user).data}, status=201)
 
 
+@swagger_auto_schema(
+    method='post',
+    request_body=openapi.Schema(
+        type=openapi.TYPE_OBJECT,
+        required=['email', 'password'],
+        properties={
+            'email': openapi.Schema(type=openapi.TYPE_STRING),
+            'password': openapi.Schema(type=openapi.TYPE_STRING),
+        }
+    ),
+    responses={200: "Přihlášení úspěšné."}
+)
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def login_user(request):
@@ -100,6 +126,10 @@ def login_user(request):
     return response
 
 
+@swagger_auto_schema(
+    method='post',
+    responses={200: "Odhlášení úspěšné."}
+)
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def logout_user(request):
@@ -111,14 +141,22 @@ def logout_user(request):
     return response
 
 
+@swagger_auto_schema(
+    method='get',
+    responses={200: UserSerializer()}
+)
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def get_authenticated_user(request):
-    """Endpoint `/auth/me` vrátí informace o přihlášeném uživateli."""
+    """Endpoint vrátí informace o přihlášeném uživateli."""
     user = request.user
     return Response(UserSerializer(user).data)
 
 
+@swagger_auto_schema(
+    method='post',
+    responses={200: openapi.Response("Nový access token")},
+)
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def refresh_token(request):
@@ -147,6 +185,19 @@ def refresh_token(request):
         return Response({"detail": "Obnovení tokenu selhalo."}, status=401)
 
 
+@swagger_auto_schema(
+    method='post',
+    request_body=openapi.Schema(
+        type=openapi.TYPE_OBJECT,
+        required=['old_password', 'new_password', 'confirm_password'],
+        properties={
+            'old_password': openapi.Schema(type=openapi.TYPE_STRING),
+            'new_password': openapi.Schema(type=openapi.TYPE_STRING),
+            'confirm_password': openapi.Schema(type=openapi.TYPE_STRING),
+        }
+    ),
+    responses={200: "Heslo bylo úspěšně změněno."}
+)
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def change_password(request):
@@ -175,6 +226,17 @@ def create_password_reset_token(user):
     token["type"] = "password_reset"
     return str(token)
 
+@swagger_auto_schema(
+    method='post',
+    request_body=openapi.Schema(
+        type=openapi.TYPE_OBJECT,
+        required=['email'],
+        properties={
+            'email': openapi.Schema(type=openapi.TYPE_STRING),
+        }
+    ),
+    responses={200: "Odkaz pro reset hesla byl odeslán na email."}
+)
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def request_password_reset(request):
@@ -201,6 +263,19 @@ def request_password_reset(request):
     return Response({"message": "Odkaz pro reset hesla byl odeslán na email."})
 
 
+@swagger_auto_schema(
+    method='post',
+    request_body=openapi.Schema(
+        type=openapi.TYPE_OBJECT,
+        required=['token', 'new_password', 'confirm_password'],
+        properties={
+            'token': openapi.Schema(type=openapi.TYPE_STRING),
+            'new_password': openapi.Schema(type=openapi.TYPE_STRING),
+            'confirm_password': openapi.Schema(type=openapi.TYPE_STRING),
+        }
+    ),
+    responses={200: "Heslo bylo úspěšně změněno."}
+)
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def reset_password(request):

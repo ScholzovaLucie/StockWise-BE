@@ -1,9 +1,10 @@
 from functools import reduce
 
 from django.shortcuts import get_object_or_404
+from drf_yasg import openapi
+from drf_yasg.utils import swagger_auto_schema
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
-from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
 from django.db.models import Q
 
@@ -14,10 +15,61 @@ from utils.pagination import CustomPageNumberPagination
 
 class GroupViewSet(viewsets.ModelViewSet):
     """
-    ViewSet pro správu skupin (Group). Obsahuje standardní CRUD a vlastní akce pro vyhledávání a odebrání z boxu.
+    GroupViewSet poskytuje REST API pro správu skupin zboží (Group model).
+
+    Funkcionalita zahrnuje:
+    - standardní CRUD operace nad skupinami (`ModelViewSet`)
+    - přepnutí na zkrácený serializer při list akci pro efektivnější výstup
+    - omezení záznamů dle klienta přihlášeného uživatele (`get_queryset`)
+    - vlastní akci `/search/`, která umožňuje fulltextové hledání dle více atributů (ID, název produktu, SKU, číslo šarže, EAN krabice)
+    - vlastní akci `/remove_from_box/`, která slouží k odebrání skupiny z krabice
+
+    Bezpečnostní filtr: Skupiny jsou filtrovány podle klientů, ke kterým má přihlášený uživatel přiřazený přístup.
     """
     queryset = Group.objects.all()
     serializer_class = GroupSerializer
+
+    @swagger_auto_schema(
+        operation_description="Vrací seznam všech skupin s možností filtrování dle klienta.",
+        responses={200: GroupListSerializer(many=True)}
+    )
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @swagger_auto_schema(
+        operation_description="Vytvoří novou skupinu.",
+        responses={201: GroupSerializer()}
+    )
+    def create(self, request, *args, **kwargs):
+        return super().create(request, *args, **kwargs)
+
+    @swagger_auto_schema(
+        operation_description="Vrací detail skupiny podle ID.",
+        responses={200: GroupSerializer()}
+    )
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
+
+    @swagger_auto_schema(
+        operation_description="Upraví celou skupinu (PUT).",
+        responses={200: GroupSerializer()}
+    )
+    def update(self, request, *args, **kwargs):
+        return super().update(request, *args, **kwargs)
+
+    @swagger_auto_schema(
+        operation_description="Částečně upraví skupinu (PATCH).",
+        responses={200: GroupSerializer()}
+    )
+    def partial_update(self, request, *args, **kwargs):
+        return super().partial_update(request, *args, **kwargs)
+
+    @swagger_auto_schema(
+        operation_description="Smaže skupinu podle ID.",
+        responses={204: "No Content"}
+    )
+    def destroy(self, request, *args, **kwargs):
+        return super().destroy(request, *args, **kwargs)
 
     def get_queryset(self):
         """
@@ -50,6 +102,28 @@ class GroupViewSet(viewsets.ModelViewSet):
             return GroupListSerializer
         return GroupSerializer
 
+    @swagger_auto_schema(
+        manual_parameters=[
+            openapi.Parameter(
+                'q', openapi.IN_QUERY,
+                description="Vyhledávací dotaz (může obsahovat více hodnot oddělených čárkou)",
+                type=openapi.TYPE_STRING,
+                required=True
+            ),
+            openapi.Parameter(
+                'clientId', openapi.IN_QUERY,
+                description="ID klienta (volitelné)",
+                type=openapi.TYPE_STRING
+            ),
+            openapi.Parameter(
+                'page_size', openapi.IN_QUERY,
+                description="Počet položek na stránku",
+                type=openapi.TYPE_INTEGER
+            ),
+        ],
+        responses={200: GroupSerializer(many=True)},
+        operation_description="Vyhledávání skupin podle ID, SKU, názvu produktu, čísla šarže nebo EAN kódu krabice."
+    )
     @action(detail=False, methods=['get'], url_path='search')
     def search(self, request):
         """
@@ -97,6 +171,15 @@ class GroupViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(paginated_data, many=True)
         return Response(serializer.data)
 
+    @swagger_auto_schema(
+        operation_description="Odebere skupinu z krabice (resetuje i příznak přenaskenování `rescanned`).",
+        responses={200: openapi.Response("Skupina úspěšně odebrána", schema=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={
+                'message': openapi.Schema(type=openapi.TYPE_STRING)
+            }
+        ))}
+    )
     @action(detail=True, methods=['post'], url_path='remove_from_box')
     def remove_from_box(self, request, pk=None):
         """

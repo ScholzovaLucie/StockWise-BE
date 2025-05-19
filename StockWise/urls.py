@@ -21,6 +21,8 @@ from django.urls import path
 from rest_framework import permissions
 from drf_yasg.views import get_schema_view
 from drf_yasg import openapi
+from django.contrib.auth import views as auth_views
+from rest_framework.urlpatterns import format_suffix_patterns
 
 from batch.views import BatchViewSet
 from box.views import BoxViewSet
@@ -45,7 +47,8 @@ schema_view = get_schema_view(
         license=openapi.License(name="MIT License"),
     ),
     public=True,
-    permission_classes=(permissions.AllowAny,),
+    permission_classes=[permissions.AllowAny,],
+    authentication_classes=[],
 )
 
 
@@ -68,6 +71,7 @@ urlpatterns = [
     path('api/auth/', include('user.urls')),
     path('swagger/', schema_view.with_ui('swagger', cache_timeout=0), name='schema-swagger-ui'),
     path('redoc/', schema_view.with_ui('redoc', cache_timeout=0), name='schema-redoc'),
+    path('accounts/login/', auth_views.LoginView.as_view(), name='login'),
     path('api/dashboard/', include('dashboard.urls')),
     path("api/chatbot", ChatbotView.as_view(), name="chatbot"),
     path("api/statistics", StatisticsView.as_view(), name="chatbot_statistics"),

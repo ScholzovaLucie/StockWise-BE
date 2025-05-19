@@ -3,7 +3,6 @@ from django.db import models
 from history.models import History
 
 
-# Create your models here.
 class Operation(models.Model):
     VALID_TRANSITIONS = {
         'CREATED': ['BOX', 'CANCELLED'],

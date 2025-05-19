@@ -1,5 +1,7 @@
 from functools import reduce
 
+from drf_yasg import openapi
+from drf_yasg.utils import swagger_auto_schema
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -10,12 +12,71 @@ from position.serializers import PositionSerializer
 from utils.pagination import CustomPageNumberPagination
 
 
-# Create your views here.
 class PositionViewSet(viewsets.ModelViewSet):
+    """
+   ViewSet pro správu pozic (Position). Obsahuje CRUD operace a fulltextové vyhledávání.
+
+   - Umožňuje vyhledávat podle názvu skladu, EAN krabice nebo kódu pozice.
+   - Výsledky jsou stránkované pomocí `CustomPageNumberPagination`.
+   """
     queryset = Position.objects.all()
     serializer_class = PositionSerializer
     pagination_class = CustomPageNumberPagination
 
+    @swagger_auto_schema(
+        operation_description="Vrací seznam všech pozic.",
+        responses={200: PositionSerializer(many=True)}
+    )
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @swagger_auto_schema(
+        operation_description="Vrací detail pozice podle ID.",
+        responses={200: PositionSerializer()}
+    )
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
+
+    @swagger_auto_schema(
+        operation_description="Vytvoří novou pozici.",
+        responses={201: PositionSerializer()}
+    )
+    def create(self, request, *args, **kwargs):
+        return super().create(request, *args, **kwargs)
+
+    @swagger_auto_schema(
+        operation_description="Upraví celou pozici (PUT).",
+        responses={200: PositionSerializer()}
+    )
+    def update(self, request, *args, **kwargs):
+        return super().update(request, *args, **kwargs)
+
+    @swagger_auto_schema(
+        operation_description="Částečně upraví pozici (PATCH).",
+        responses={200: PositionSerializer()}
+    )
+    def partial_update(self, request, *args, **kwargs):
+        return super().partial_update(request, *args, **kwargs)
+
+    @swagger_auto_schema(
+        operation_description="Smaže pozici podle ID.",
+        responses={204: "No Content"}
+    )
+    def destroy(self, request, *args, **kwargs):
+        return super().destroy(request, *args, **kwargs)
+
+    @swagger_auto_schema(
+        method='get',
+        operation_description="Vyhledává pozice podle zadaného dotazu (kód, EAN krabice, název skladu). "
+                              "Podporuje vícenásobné výrazy oddělené čárkami.",
+        manual_parameters=[
+            openapi.Parameter('q', openapi.IN_QUERY, description="Vyhledávací dotaz (čárkami oddělené výrazy)",
+                              type=openapi.TYPE_STRING, required=True),
+            openapi.Parameter('page_size', openapi.IN_QUERY, description="Počet výsledků na stránku",
+                              type=openapi.TYPE_INTEGER),
+        ],
+        responses={200: PositionSerializer(many=True)}
+    )
     @action(detail=False, methods=['get'], url_path='search')
     def search(self, request):
         """

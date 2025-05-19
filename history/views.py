@@ -1,3 +1,5 @@
+from drf_yasg import openapi
+from drf_yasg.utils import swagger_auto_schema
 from rest_framework.decorators import action
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.response import Response
@@ -14,11 +16,64 @@ from utils.pagination import CustomPageNumberPagination
 
 class HistoryViewSet(viewsets.ModelViewSet):
     """
-    ViewSet pro práci s historií. Umožňuje vyhledávání a filtrování záznamů podle typu.
+    ViewSet pro práci s historií záznamů v systému.
+    Umožňuje základní CRUD operace a také filtrování historie podle typu objektu.
     """
     queryset = History.objects.all()
     serializer_class = HistorySerializer
 
+    @swagger_auto_schema(
+        operation_description="Vrací seznam všech záznamů historie.",
+        responses={200: HistorySerializer(many=True)}
+    )
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @swagger_auto_schema(
+        operation_description="Vytvoří nový záznam historie.",
+        responses={201: HistorySerializer()}
+    )
+    def create(self, request, *args, **kwargs):
+        return super().create(request, *args, **kwargs)
+
+    @swagger_auto_schema(
+        operation_description="Vrací detail záznamu historie podle ID.",
+        responses={200: HistorySerializer()}
+    )
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
+
+    @swagger_auto_schema(
+        operation_description="Upraví celý záznam historie (PUT).",
+        responses={200: HistorySerializer()}
+    )
+    def update(self, request, *args, **kwargs):
+        return super().update(request, *args, **kwargs)
+
+    @swagger_auto_schema(
+        operation_description="Částečně upraví záznam historie (PATCH).",
+        responses={200: HistorySerializer()}
+    )
+    def partial_update(self, request, *args, **kwargs):
+        return super().partial_update(request, *args, **kwargs)
+
+    @swagger_auto_schema(
+        operation_description="Smaže záznam historie podle ID.",
+        responses={204: "No Content"}
+    )
+    def destroy(self, request, *args, **kwargs):
+        return super().destroy(request, *args, **kwargs)
+
+    @swagger_auto_schema(
+        manual_parameters=[
+            openapi.Parameter("q", openapi.IN_QUERY, description="Hledaný výraz, lze zadat více oddělené čárkou",
+                              type=openapi.TYPE_STRING, required=True),
+            openapi.Parameter("page_size", openapi.IN_QUERY, description="Počet záznamů na stránku",
+                              type=openapi.TYPE_INTEGER)
+        ],
+        operation_description="Vyhledává historii podle popisu, typu nebo ID.",
+        responses={200: HistorySerializer(many=True)}
+    )
     @action(detail=False, methods=["get"], url_path="search")
     def search(self, request):
         """
@@ -71,6 +126,20 @@ class HistoryViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(paginated_data, many=True)
         return paginator.get_paginated_response(serializer.data)
 
+    @staticmethod
+    def _swagger_history_by_type(description):
+        return swagger_auto_schema(
+            manual_parameters=[
+                openapi.Parameter("related_id", openapi.IN_QUERY, description="ID související entity",
+                                  type=openapi.TYPE_STRING),
+                openapi.Parameter("page_size", openapi.IN_QUERY, description="Počet záznamů na stránku",
+                                  type=openapi.TYPE_INTEGER)
+            ],
+            operation_description=description,
+            responses={200: HistorySerializer(many=True)}
+        )
+
+    @_swagger_history_by_type("Vrací historii typu 'operation'.")
     @action(detail=False, methods=["get"], url_path="operation")
     def get_operation_history(self, request):
         """
@@ -78,6 +147,7 @@ class HistoryViewSet(viewsets.ModelViewSet):
         """
         return self._get_paginated_response_by_type(request, "operation")
 
+    @_swagger_history_by_type("Vrací historii typu 'product'.")
     @action(detail=False, methods=["get"], url_path="product")
     def get_product_history(self, request):
         """
@@ -85,6 +155,7 @@ class HistoryViewSet(viewsets.ModelViewSet):
         """
         return self._get_paginated_response_by_type(request, "product")
 
+    @_swagger_history_by_type("Vrací historii typu 'position'.")
     @action(detail=False, methods=["get"], url_path="position")
     def get_position_history(self, request):
         """
@@ -92,6 +163,7 @@ class HistoryViewSet(viewsets.ModelViewSet):
         """
         return self._get_paginated_response_by_type(request, "position")
 
+    @_swagger_history_by_type("Vrací historii typu 'batch'.")
     @action(detail=False, methods=["get"], url_path="batch")
     def get_batch_history(self, request):
         """
@@ -99,6 +171,7 @@ class HistoryViewSet(viewsets.ModelViewSet):
         """
         return self._get_paginated_response_by_type(request, "batch")
 
+    @_swagger_history_by_type("Vrací historii typu 'group'.")
     @action(detail=False, methods=["get"], url_path="group")
     def get_group_history(self, request):
         """

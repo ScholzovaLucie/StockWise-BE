@@ -2,7 +2,6 @@ from django.db import models
 
 
 
-# Create your models here.
 class Box(models.Model):
     ean = models.CharField('EAN', max_length=40, null=False, blank=True)
     width = models.DecimalField(max_digits=10, decimal_places=2, default=0)

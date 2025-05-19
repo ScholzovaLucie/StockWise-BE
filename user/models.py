@@ -20,7 +20,6 @@ class UserManager(BaseUserManager):
 
 
 
-# Create your models here.
 class User(AbstractBaseUser, PermissionsMixin):
     client = models.ManyToManyField('client.Client', related_name="users")
     name = models.CharField(max_length=255)

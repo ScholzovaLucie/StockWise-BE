@@ -1,5 +1,7 @@
 from functools import reduce
 
+from drf_yasg import openapi
+from drf_yasg.utils import swagger_auto_schema
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -11,9 +13,61 @@ from utils.pagination import CustomPageNumberPagination
 
 
 class BatchViewSet(viewsets.ModelViewSet):
+    """
+    BatchViewSet poskytuje REST API pro správu šarží produktů (Batch model).
+
+    Zahrnuje:
+    - standardní CRUD operace děděné z `ModelViewSet`
+    - omezení záznamů dle klienta přihlášeného uživatele (`get_queryset`)
+    - vlastní endpoint `/search/`, který umožňuje hledat šarže podle názvu produktu, SKU, čísla šarže nebo data expirace. Vyhledávání podporuje vícenásobné výrazy oddělené čárkou a funguje jako OR kombinace mezi jednotlivými poli a výrazy.
+
+    Bezpečnostní filtr: Šarže jsou filtrovány podle klientů, ke kterým má přihlášený uživatel přiřazený přístup.
+    """
     queryset = Batch.objects.all()
     serializer_class = BatchSerializer
     pagination_class = CustomPageNumberPagination
+
+    @swagger_auto_schema(
+        operation_description="Vrací seznam všech šarží s možností filtrování dle klienta.",
+        responses={200: BatchSerializer(many=True)}
+    )
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @swagger_auto_schema(
+        operation_description="Vytvoří novou šarži.",
+        responses={201: BatchSerializer()}
+    )
+    def create(self, request, *args, **kwargs):
+        return super().create(request, *args, **kwargs)
+
+    @swagger_auto_schema(
+        operation_description="Vrací detail šarže podle ID.",
+        responses={200: BatchSerializer()}
+    )
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
+
+    @swagger_auto_schema(
+        operation_description="Upraví celou šarži (PUT).",
+        responses={200: BatchSerializer()}
+    )
+    def update(self, request, *args, **kwargs):
+        return super().update(request, *args, **kwargs)
+
+    @swagger_auto_schema(
+        operation_description="Částečně upraví šarži (PATCH).",
+        responses={200: BatchSerializer()}
+    )
+    def partial_update(self, request, *args, **kwargs):
+        return super().partial_update(request, *args, **kwargs)
+
+    @swagger_auto_schema(
+        operation_description="Smaže šarži podle ID.",
+        responses={204: "No Content"}
+    )
+    def destroy(self, request, *args, **kwargs):
+        return super().destroy(request, *args, **kwargs)
 
     def get_queryset(self):
         """
@@ -27,6 +81,22 @@ class BatchViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(product__client_id=client_id)
         return queryset
 
+    @swagger_auto_schema(
+        manual_parameters=[
+            openapi.Parameter(
+                'q', openapi.IN_QUERY, description="Vyhledávací dotaz (může obsahovat více hodnot oddělených čárkou)",
+                type=openapi.TYPE_STRING, required=True
+            ),
+            openapi.Parameter(
+                'clientId', openapi.IN_QUERY, description="ID klienta (volitelné)", type=openapi.TYPE_STRING
+            ),
+            openapi.Parameter(
+                'page_size', openapi.IN_QUERY, description="Počet položek na stránku", type=openapi.TYPE_INTEGER
+            ),
+        ],
+        responses={200: BatchSerializer(many=True)},
+        operation_description="Vyhledávání šarží podle názvu produktu, SKU, čísla šarže nebo expirace."
+    )
     @action(detail=False, methods=['get'], url_path='search')
     def search(self, request):
         """
