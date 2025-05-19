@@ -44,7 +44,7 @@ docker-compose up --build
 ---
 
 ## 🔐 Autentizace
-Backend používá JWT tokeny uložené v cookies (HttpOnly, Secure, SameSite=None). K dispozici jsou tyto endpointy:
+Backend používá JWT tokeny uložené v cookies (HttpOnly, Secure, SameSite=None).
 
 ---
 
