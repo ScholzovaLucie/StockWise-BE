@@ -36,6 +36,7 @@ TESTING=0
 ## ⚙️ Lokální spuštění (Docker)
 
 Ujisti se, že máš nainstalovaný Docker a Docker Compose.
+Je potřeba přepsat adresu databáze v docker-compose.yml na lokální postgres a také TESTING v .env na 1
 
 ```bash
 docker-compose up --build
