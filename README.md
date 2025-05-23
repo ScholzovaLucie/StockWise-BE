@@ -22,7 +22,7 @@ Tento repozitář obsahuje backendovou část systému StockWise pro správu skl
 Pro správné fungování aplikace je nutné vytvořit soubor `.env` v adresáři StockWIse/ a vyplnit potřebné proměnné. Níže je uveden příklad:
 
 ```bash
-OPENAI_API_KEY=sk-... (pro účely testování uložen v souboru secret_key)
+OPENAI_API_KEY=sk-...
 OPENAI_MODEL=gpt-4o
 
 DB_USER=postgres.etcoksjerwplaibvjtjt
@@ -33,6 +33,8 @@ DB_NAME=postgres
 
 TESTING=0
 ```
+
+OPENAI_API_KEY není součástí veřejného repozitáře z bezpečnostních důvodů. Pokud potřebujete API klíč pro účely testování, mohu vám ho poskytnout na vyžádání.
 
 ---
 
